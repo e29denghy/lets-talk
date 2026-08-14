@@ -56,6 +56,8 @@ let suppressAiAudio = false;
 let latencyAnchor: number | null = null;
 let sessionConfigured = false;
 let pendingSessionUpdate: string | null = null;
+let reconnectAttempts = 0;
+let activeResult: SessionStartResponse | null = null;
 let turns: TurnInput[] = [];
 let nextSeq = 1;
 let durationTimer: number | null = null;
@@ -81,6 +83,7 @@ async function start(scenarioId: number, nickname?: string, grade?: number): Pro
         await ensureVisitor(nickname, grade);
 
         const result = await api.startSession(scenarioId);
+        activeResult = result;
         state.sessionId = result.session.id;
         state.quota = result.quota;
         sessionStartedAt = Date.now();
@@ -90,10 +93,7 @@ async function start(scenarioId: number, nickname?: string, grade?: number): Pro
         await player.unlock(result.credentials.output_sample_rate ?? result.audio.sample_rate);
 
         // 预先组装 session.update，等收到 session.created 后发送
-        const preset = (result.credentials.session_init ?? { session: {} }) as {
-            session: Record<string, unknown>;
-        };
-        pendingSessionUpdate = qwen.sessionUpdate(preset, result.system_prompt);
+        prepareSessionUpdate(result);
 
         durationTimer = window.setInterval(() => {
             state.durationS = Math.floor((Date.now() - sessionStartedAt) / 1000);
@@ -127,6 +127,15 @@ async function start(scenarioId: number, nickname?: string, grade?: number): Pro
         await teardown();
         throw error;
     }
+}
+
+/** 组装 session.update（收到 session.created 后由消息循环发送）。 */
+function prepareSessionUpdate(result: SessionStartResponse): void {
+    const preset = (result.credentials.session_init ?? { session: {} }) as {
+        session: Record<string, unknown>;
+    };
+    pendingSessionUpdate = qwen.sessionUpdate(preset, result.system_prompt);
+    sessionConfigured = false;
 }
 
 /**
@@ -301,11 +310,29 @@ function openSocket(result: SessionStartResponse): Promise<void> {
             reject(new Error('无法连接语音服务，请检查网络或服务商配置'));
         };
 
-        ws.onclose = () => {
-            if (!manualClose && state.status !== 'ended' && state.status !== 'error') {
+        ws.onclose = async () => {
+            if (manualClose || state.status === 'ended' || state.status === 'error') return;
+
+            // 意外断线：重签 token 后自动重连（最多 2 次）
+            if (reconnectAttempts >= 2 || state.sessionId === null || !activeResult) {
                 state.status = 'error';
                 state.error = '语音连接已断开';
-                void teardown();
+                await teardown();
+                return;
+            }
+
+            reconnectAttempts += 1;
+            state.error = `连接断开，正在重连（第 ${reconnectAttempts} 次）…`;
+
+            try {
+                const fresh = await api.reissueSession(state.sessionId);
+                prepareSessionUpdate({ ...activeResult, credentials: fresh.credentials });
+                await openSocket({ ...activeResult, credentials: fresh.credentials });
+                state.error = null;
+            } catch {
+                state.status = 'error';
+                state.error = '重连失败，请结束本次练习后重试';
+                await teardown();
             }
         };
     });
@@ -374,6 +401,8 @@ function reset(): void {
     sessionConfigured = false;
     pendingSessionUpdate = null;
     lastStudentItemId = null;
+    reconnectAttempts = 0;
+    activeResult = null;
     turns = [];
     nextSeq = 1;
     state.sessionId = null;

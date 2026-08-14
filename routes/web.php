@@ -17,6 +17,7 @@ Route::middleware('auth.basic')->prefix('admin')->name('admin.')->group(function
     Route::get('/', [SessionAdminController::class, 'index'])->name('sessions.index');
     Route::get('/visitors', [SessionAdminController::class, 'visitors'])->name('visitors.index');
     Route::get('/sessions/{session}', [SessionAdminController::class, 'show'])->name('sessions.show');
+    Route::post('/sessions/{session}/finalize', [SessionAdminController::class, 'finalize'])->name('sessions.finalize');
     Route::get('/sessions/{session}/audio/{channel}', [SessionAdminController::class, 'audio'])
         ->whereIn('channel', ['student', 'ai'])
         ->name('sessions.audio');

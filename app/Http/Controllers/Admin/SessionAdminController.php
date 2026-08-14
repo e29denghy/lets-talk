@@ -5,7 +5,9 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\ConversationSession;
 use App\Models\Visitor;
+use App\Services\VoiceSessionService;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Storage;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -92,6 +94,16 @@ class SessionAdminController extends Controller
             ],
             'turns' => $turns,
         ]);
+    }
+
+    /** 手动强制结束滞留的 active 会话（如浏览器被直接关闭）。 */
+    public function finalize(ConversationSession $session): RedirectResponse
+    {
+        if ($session->status === ConversationSession::STATUS_ACTIVE) {
+            app(VoiceSessionService::class)->end($session, []);
+        }
+
+        return back();
     }
 
     public function audio(ConversationSession $session, string $channel): StreamedResponse|JsonResponse

@@ -7,6 +7,7 @@ use App\Models\ConversationSession;
 use App\Models\Scenario;
 use App\Models\Visitor;
 use App\Models\VoiceQuota;
+use App\Realtime\RealtimeProviderManager;
 use App\Services\VoiceSessionService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -88,6 +89,19 @@ class SessionController extends Controller
         return response()->json([
             ...$result,
             'uploaded_total' => $this->sessions->uploadedBytes($session, $channel),
+        ]);
+    }
+
+    /** 断线重连：为进行中的会话重新签发直连凭据（token 短时效，需刷新）。 */
+    public function reissue(ConversationSession $session): JsonResponse
+    {
+        $this->ensureOwned($session);
+        $this->ensureActive($session);
+
+        $provider = app(RealtimeProviderManager::class)->driver($session->provider);
+
+        return response()->json([
+            'credentials' => $provider->issueSessionToken($session)->toArray(),
         ]);
     }
 

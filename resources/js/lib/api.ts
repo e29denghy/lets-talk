@@ -96,6 +96,12 @@ export const api = {
             body: JSON.stringify({ turns }),
         }),
 
+    reissueSession: (sessionId: number) =>
+        request<{ credentials: SessionCredentials }>(`/api/voice/sessions/${sessionId}/reissue`, {
+            method: 'POST',
+            headers: JSON_HEADERS,
+        }),
+
     endSession: (sessionId: number, timeline: unknown[]) =>
         request<{
             session: { id: number; status: string; duration_s: number; turn_count: number };

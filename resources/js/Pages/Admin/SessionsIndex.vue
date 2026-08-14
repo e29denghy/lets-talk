@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Link } from '@inertiajs/vue3';
+import { Link, router } from '@inertiajs/vue3';
 
 defineProps<{
     sessions: Array<{
@@ -27,6 +27,10 @@ const statusLabel: Record<string, string> = {
     connecting: '连接中',
     failed: '失败',
 };
+
+function finalizeSession(id: number): void {
+    router.post(`/admin/sessions/${id}/finalize`, {}, { preserveScroll: true });
+}
 </script>
 
 <template>
@@ -70,6 +74,14 @@ const statusLabel: Record<string, string> = {
                         <td class="px-4 py-3">{{ session.turn_count }}</td>
                         <td class="px-4 py-3 text-xs text-slate-500">{{ session.started_at }}</td>
                         <td class="px-4 py-3 text-right">
+                            <span v-if="session.status === 'active'">
+                                <button
+                                    class="mr-3 rounded-lg bg-rose-100 px-2.5 py-1 text-xs text-rose-700 hover:bg-rose-200"
+                                    @click="finalizeSession(session.id)"
+                                >
+                                    强制结束
+                                </button>
+                            </span>
                             <Link
                                 :href="`/admin/sessions/${session.id}`"
                                 class="text-indigo-600 hover:underline"

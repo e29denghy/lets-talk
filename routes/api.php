@@ -28,5 +28,7 @@ Route::middleware(ResolveVisitor::class)->prefix('voice')->group(function () {
 
     Route::post('/sessions/{session}/turns', [SessionController::class, 'storeTurns']);
 
+    Route::post('/sessions/{session}/reissue', [SessionController::class, 'reissue']);
+
     Route::post('/sessions/{session}/end', [SessionController::class, 'end']);
 });

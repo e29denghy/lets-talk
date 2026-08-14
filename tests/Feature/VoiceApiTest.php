@@ -184,6 +184,42 @@ class VoiceApiTest extends TestCase
         $this->postRawAudio($sessionId, 'student', 0, 'X')->assertStatus(403);
     }
 
+    public function test_reissue_returns_fresh_credentials_for_active_session(): void
+    {
+        Storage::fake('local');
+
+        $this->registerVisitor();
+
+        $sessionId = $this->beginSession(Scenario::firstOrFail()->id);
+
+        $this->postJson("/api/voice/sessions/{$sessionId}/reissue")
+            ->assertOk()
+            ->assertJsonPath('credentials.provider', 'fake')
+            ->assertJsonPath('credentials.token', 'test-token');
+    }
+
+    public function test_stale_active_sessions_are_closed_by_command(): void
+    {
+        Storage::fake('local');
+
+        $this->registerVisitor();
+
+        $sessionId = $this->beginSession(Scenario::firstOrFail()->id);
+
+        ConversationSession::where('id', $sessionId)
+            ->update(['started_at' => now()->subHours(3)]);
+
+        $this->postRawAudio($sessionId, 'student', 0, 'PCMDATA-000')->assertOk();
+
+        $this->artisan('voice:close-stale-sessions')->assertExitCode(0);
+
+        $session = ConversationSession::findOrFail($sessionId);
+
+        $this->assertSame(ConversationSession::STATUS_ENDED, $session->status);
+        $this->assertNotNull($session->student_audio_path);
+        Storage::disk('local')->assertExists($session->student_audio_path);
+    }
+
     public function test_admin_can_download_session_audio_with_basic_auth(): void
     {
         Storage::fake('local');

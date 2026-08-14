@@ -89,9 +89,13 @@ resources/js/
 | POST | `/api/voice/sessions` | 开始会话，返回 `{ws_url, token, system_prompt, ...}` |
 | POST | `/api/voice/sessions/{id}/audio/{student\|ai}?seq=N` | 录音分片追加（octet-stream，seq 幂等） |
 | POST | `/api/voice/sessions/{id}/turns` | 字幕/回合批量落库 |
+| POST | `/api/voice/sessions/{id}/reissue` | 断线重连：重签直连凭据（token 短时效） |
 | POST | `/api/voice/sessions/{id}/end` | 结束：PCM→WAV 封存 + timeline + 配额累计 |
 
-录音存储：`storage/app/private/voice/{session_id}/` 下 `student.wav`、`ai.wav`、`timeline.json`。
+录音存储：`storage/app/private/voice/{session_id}/` 下 `student.wav`（16kHz）、`ai.wav`（24kHz）、`timeline.json`。
+
+滞留会话收尾：`php artisan voice:close-stale-sessions`（已挂调度器每小时执行），
+管理端会话列表对 active 会话也有「强制结束」按钮。
 
 ## 已知事项
 
