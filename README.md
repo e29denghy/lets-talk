@@ -16,11 +16,12 @@
 cd lets-talk
 export PATH="/opt/homebrew/opt/php@8.5/bin:$PATH"
 
-composer install          # 运行依赖已装好；dev 依赖（pint/phpunit/faker）待网络好时再补
+composer install          # 运行依赖已装好；dev 依赖仅缺 pint（代码风格工具，可随时 composer require laravel/pint --dev）
 npm install
 cp .env.example .env      # 若还没有 .env
 php artisan key:generate
 php artisan migrate --seed
+php artisan test          # 10 个功能测试（假 Provider 全链路，无需真实 API Key）
 ```
 
 启动（二选一）：
@@ -96,4 +97,4 @@ resources/js/
 - 阶段一为「浏览器直连供应商」模式；音频帧不走 Laravel/Reverb，网关抽象已预留中继位。
 - 打断（barge-in）：本地能量 VAD 检测学生开口 → `response.cancel` + 播放队列 flush。
 - 录音在浏览器侧分片上传（每 ~20s），标签页崩溃最多丢失最后一个间隔。
-- dev 依赖（pint 等）因 GitHub 下载超时暂未安装，后续网络好时 `composer install` 补齐。
+- `laravel/pint` 因 GitHub 下载超时从 require-dev 移除，需要时 `composer require laravel/pint --dev` 补回。
