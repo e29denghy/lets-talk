@@ -1,6 +1,7 @@
 import { reactive, readonly } from 'vue';
 import { MicRecorder } from '../lib/audio/recorder';
 import { PcmPlayer } from '../lib/audio/player';
+import { BargeDetector } from '../lib/audio/barge';
 import { rmsEnergy } from '../lib/audio/vad';
 import { ChunkUploader } from '../lib/audio/uploader';
 import * as qwen from '../lib/providers/qwenOmniClient';
@@ -67,9 +68,17 @@ let sessionStartedAt = 0;
 
 const VISITOR_COOKIE = 'lets_talk_visitor';
 
-// AI 说话期间的插话判定阈值：麦克风帧能量超过它才算「学生开口」。
-// 低于该值的帧（包括扬声器回声）在 AI 说话期间不会发给服务端，防止回声自激循环。
-const BARGE_IN_RMS = 0.08;
+/**
+ * 打断检测（回声自适应）：
+ * - AI 说话期间麦克风帧一律不上行（防回声/噪声触发服务端 VAD 取消），
+ *   打断由本地检测确认后主动发 response.cancel；
+ * - 阈值 = max(0.08, 回声比 × AI 近期能量 × 1.6 + 0.02)，
+ *   回声比从 0.9（最保守）开始随回声采样收敛；
+ * - 需连续 6 帧（约 120ms）超阈值才确认，瞬时噪声不误触。
+ */
+const barge = new BargeDetector();
+let aiRecentRms = 0; // AI 输出近期能量（回声参考）
+let bargeActive = false; // 已确认打断，等待服务端 cancelled/done
 
 /* ---- 麦克风电平可视化（rAF 节流 + 快升慢降平滑，~30fps 写状态） ---- */
 let micLevelRaw = 0;
@@ -176,9 +185,9 @@ function prepareSessionUpdate(result: SessionStartResponse): void {
 
 /**
  * 学生 PCM 帧处理：录音始终进行；推流分两种状态——
- *  1. AI 说话期间：只把「疑似学生插话」的响亮帧发给服务端（触发服务端打断），
- *     其余帧不上行——这是防回声自激的关键（否则 AI 的声音被麦克风拾取后
- *     会被服务端 VAD 当成学生在说话，形成无限循环）。
+ *  1. AI 说话期间：帧不上行（防止扬声器回声/环境噪声被服务端 VAD 误判为
+ *     学生插话而取消回复——这是 AI 语音被莫名截断的主因）。
+ *     插话由本地回声自适应检测确认后，主动发 response.cancel 打断。
  *  2. 平时：全量推流，话轮由服务端 server_vad 判断。
  */
 function onStudentPcm(pcm: Int16Array): void {
@@ -189,37 +198,57 @@ function onStudentPcm(pcm: Int16Array): void {
     uploader?.append('student', pcm);
 
     if (aiSpeaking) {
-        if (rmsEnergy(pcm) >= BARGE_IN_RMS) {
-            // 学生开口插话：本地立即静音，恢复推流让服务端完成打断
-            player?.flush();
-            suppressAiAudio = true;
-            aiSpeaking = false;
+        aiRecentRms *= 0.98; // 播放能量随帧缓慢衰减
 
-            if (state.status === 'speaking') {
-                state.status = 'listening';
-            }
+        const rms = rmsEnergy(pcm);
 
-            socket.send(qwen.appendAudio(pcm));
+        if (barge.update(rms, aiRecentRms)) {
+            doBargeIn(rms);
         }
+
         return;
     }
 
     socket.send(qwen.appendAudio(pcm));
 }
 
-/** 手动打断（头像点击）：仅在 AI 生成中发送 cancel，避免「无响应可取消」的 error 事件。 */
-function interrupt(): void {
-    if (aiSpeaking && socket && socket.readyState === WebSocket.OPEN) {
+/** 确认打断（本地回声自适应检测或用户点击）：取消生成 + 淡出 + 静音等待确认。 */
+function doBargeIn(micRms?: number): void {
+    if (bargeActive) return;
+    bargeActive = true;
+
+    console.debug('[voice] barge-in confirmed', {
+        micRms: micRms !== undefined ? Number(micRms.toFixed(3)) : null,
+        aiRms: Number(aiRecentRms.toFixed(3)),
+        threshold: Number(barge.threshold(aiRecentRms).toFixed(3)),
+        echoRatio: Number(barge.echoRatio().toFixed(2)),
+        status: state.status,
+    });
+
+    if (socket && socket.readyState === WebSocket.OPEN) {
         socket.send(qwen.cancelResponse());
-        suppressAiAudio = true;
     }
 
     player?.flush();
+    suppressAiAudio = true;
     aiSpeaking = false;
     latencyAnchor = null;
 
     if (state.status === 'speaking' || state.status === 'thinking') {
         state.status = 'listening';
+    }
+
+    // 兜底：若服务端迟迟未确认取消（cancelled/done 均未到），
+    // 2 秒后恢复音频放行，避免整段回复被永久静音。
+    window.setTimeout(() => {
+        suppressAiAudio = false;
+    }, 2000);
+}
+
+/** 手动打断（大按钮点击）：仅在 AI 生成中有效。 */
+function interrupt(): void {
+    if (state.status === 'speaking' || state.status === 'thinking') {
+        doBargeIn();
     }
 }
 
@@ -278,6 +307,10 @@ function onSocketMessage(event: MessageEvent): void {
             const pcm = qwen.decodeAudio(parsed);
 
             if (pcm && pcm.length > 0) {
+                // 更新 AI 输出能量（打断检测的回声参考）
+                const rms = rmsEnergy(pcm);
+                aiRecentRms = Math.max(rms, aiRecentRms * 0.9);
+
                 if (!aiSpeaking) {
                     aiSpeaking = true;
                     state.status = 'speaking';
@@ -316,6 +349,9 @@ function onSocketMessage(event: MessageEvent): void {
 
             aiSpeaking = false;
             suppressAiAudio = false;
+            bargeActive = false;
+            barge.reset();
+            aiRecentRms = 0;
 
             if (state.status === 'speaking') {
                 state.status = 'listening';
@@ -456,6 +492,9 @@ async function teardown(): Promise<void> {
 function reset(): void {
     manualClose = false;
     suppressAiAudio = false;
+    bargeActive = false;
+    barge.reset();
+    aiRecentRms = 0;
     sessionConfigured = false;
     pendingSessionUpdate = null;
     lastStudentItemId = null;

@@ -110,11 +110,13 @@ storage/app/private/voice/{session_id}/
 | `audio/player.ts` | AudioContext 双缓冲播放队列；AI PCM 帧同时进 WAV 缓冲；首帧前解锁 autoplay 策略 |
 | `audio/wav.ts` | 轻量 WAV 编码器（PCM→WAV 头 + 数据） |
 | `audio/uploader.ts` | 每 ~20s 或缓冲达 2MB 时 POST 分片追加写；断线重试；结束时上传 timeline.json |
-| `audio/vad.ts` | 本地能量/VAD：AI 说话中检测到学生开口 → interrupt + flush 播放队列 |
+| `audio/barge.ts` | 回声自适应打断检测：回声比（mic/AI 能量）采样收敛 + 连续 6 帧确认，替代固定阈值，大幅降低误截断 |
 | `composables/useVoiceChat.ts` | 状态机 `idle→connecting→ready→listening⇄thinking/speaking→interrupted→ended`；断线重连、token 过期重签 |
 | 界面 | 开始/结束大按钮、卡通头像动画、双语字幕、计时、结束反馈 |
 
 回声与降噪：采集开启 `echoCancellation / noiseSuppression / autoGainControl`。
+
+打断（barge-in）实现要点：AI 说话期间麦克风帧一律不上行（防回声/噪声触发服务端 VAD 取消生成）；打断由本地回声自适应检测（`audio/barge.ts`）连续 6 帧确认后主动发 `response.cancel`；播放器 40ms 淡出防爆音；取消后 2 秒未确认则恢复音频放行兜底。
 
 ## 8. 后端接口
 
