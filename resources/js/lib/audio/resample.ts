@@ -3,7 +3,7 @@ export function resampleLinear(input: Int16Array, fromRate: number, toRate: numb
     if (fromRate === toRate) return input;
 
     const ratio = fromRate / toRate;
-    const length = Math.max(1, Math.floor(input.length / ratio));
+    const length = Math.max(0, Math.floor(input.length / ratio));
     const output = new Int16Array(length);
 
     for (let i = 0; i < length; i++) {
