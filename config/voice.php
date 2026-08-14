@@ -53,16 +53,17 @@ return [
     |--------------------------------------------------------------------------
     | 供应商计费单价（人民币 / 百万 token，用于会话成本估算）
     |--------------------------------------------------------------------------
-    | qwen3-omni-flash-realtime（百炼官方定价，用户提供）：
-    |   输入-音频 ¥27、输入-文本 ¥3.3、输出-文本+音频 ¥107（输出的文本不计费）、
-    |   纯文本输出 ¥20（实时语音模式下输出文本不计费，按 0 处理）。
+    | qwen3-omni-flash-realtime（百炼官方定价 2026-07-31，华北2北京，元/每百万 tokens）：
+    |   输入-文本 ¥2.2、输入-音频 ¥18.9、输出-文本+音频 ¥75.1（输出的文本不计费）、
+    |   输出-文本（输入仅文本）¥8.3、输出-文本（输入含音视频）¥15.2。
+    | 实时语音会话按音频输入+文本输入+音频输出计费，输出文本按 0 处理。
     */
     'pricing' => [
         'qwen_omni' => [
-            'input_audio_rmb_per_1m' => 27.0,
-            'input_text_rmb_per_1m' => 3.3,
-            'output_audio_rmb_per_1m' => 107.0,
-            'output_text_rmb_per_1m' => 0.0, // 实时语音输出的文本不计费；纯文本输出为 ¥20/1M
+            'input_audio_rmb_per_1m' => 18.9,
+            'input_text_rmb_per_1m' => 2.2,
+            'output_audio_rmb_per_1m' => 75.1,
+            'output_text_rmb_per_1m' => 0.0, // 输出文本+音频模式下文本不计费
         ],
     ],
 
@@ -73,6 +74,7 @@ return [
     */
     'guardrails' => [
         'en' => [
+            'LANGUAGE RULE (very important): Detect whether the child speaks Chinese or English. You MUST reply in the same language the child used in their latest message. If the child speaks Chinese, reply in Chinese even though these instructions are in English.',
             'Speak VERY slowly and clearly, like talking to a young child who is just starting to learn English. Pause briefly between sentences.',
             'Each reply must be at most TWO or THREE short sentences. Ask only ONE question per reply.',
             'Only use simple English words suitable for a primary school student.',
@@ -83,6 +85,7 @@ return [
             'The child may switch between Chinese and English at any time. Always reply in the language the child just used. If the child asks to switch languages (for example "speak English" or "说中文"), switch immediately and briefly confirm in the new language.',
         ],
         'zh' => [
+            '语言规则（非常重要）：判断孩子说的是中文还是英文，你必须用孩子刚刚使用的语言回复。孩子说中文就必须用中文回复。',
             '全程使用中文交流，用词简单、句子简短，适合小学生。',
             '语速要非常慢、吐字清晰，像在跟刚开始学说话的小朋友讲话，句与句之间稍作停顿。',
             '每次回复最多两到三句短句，一次只问一个问题。',
@@ -108,7 +111,7 @@ return [
             'api_key' => env('VOICE_QWEN_OMNI_API_KEY'),
             // 可选模型（以官方文档为准）：qwen3-omni-flash-realtime（默认，性价比高）、
             // qwen3.5-omni-flash-realtime / qwen3.5-omni-plus-realtime（新一代）。
-            'model' => env('VOICE_QWEN_OMNI_MODEL', 'qwen3.5-omni-flash-realtime'),
+            'model' => env('VOICE_QWEN_OMNI_MODEL', 'qwen3-omni-flash-realtime'),
             'ws_url' => env('VOICE_QWEN_OMNI_WS_URL', 'wss://dashscope.aliyuncs.com/api-ws/v1/realtime'),
             // 官方鉴权是 Authorization: Bearer <API-Key> 请求头；浏览器 WebSocket 无法自定义
             // 请求头，直连模式下只能把凭据放进 URL query 参数（参数名以实测为准）。

@@ -291,8 +291,8 @@ class VoiceApiTest extends TestCase
         $this->assertSame(2000, (int) $session->input_audio_tokens);
         $this->assertSame(500, (int) $session->output_audio_tokens);
 
-        // 成本：2000/1M*27 + 1000/1M*3.3 + 500/1M*107 = 0.1108 元 = 110800 微元
-        $this->assertSame(110800, (int) $session->cost_micro);
+        // 成本：2000/1M*18.9 + 1000/1M*2.2 + 500/1M*75.1 = 0.07755 元 = 77550 微元
+        $this->assertSame(77550, (int) $session->cost_micro);
     }
 
     public function test_admin_can_manage_scenario_cards(): void

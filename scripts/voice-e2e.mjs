@@ -26,6 +26,7 @@ if (fs.existsSync(valetCa)) {
 
 const APP = process.env.APP_URL || 'https://lets-talk.test';
 const SCENARIO_ID = process.env.SCENARIO_ID || '1';
+const LANGUAGE = process.env.LANGUAGE || 'en';
 const WAV = process.argv[2];
 
 if (!WAV || !fs.existsSync(WAV)) {
@@ -79,7 +80,7 @@ console.log('[e2e] 访客已登记');
 // 2) 开会话
 const start = await api('/api/voice/sessions', {
     method: 'POST',
-    body: JSON.stringify({ scenario_id: Number(SCENARIO_ID) }),
+    body: JSON.stringify({ scenario_id: Number(SCENARIO_ID), language: LANGUAGE }),
 });
 console.log(`[e2e] 会话 #${start.session.id} 已创建`);
 console.log(`[e2e] 中继地址: ${start.credentials.ws_url}`);
