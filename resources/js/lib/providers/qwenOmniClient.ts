@@ -86,6 +86,31 @@ export function isResponseDone(event: QwenEvent): boolean {
     return event.type === 'response.done';
 }
 
+export interface TurnUsage {
+    input_text_tokens: number;
+    input_audio_tokens: number;
+    output_text_tokens: number;
+    output_audio_tokens: number;
+}
+
+/** 从 response.done 中提取 token 用量（用于成本核算）。 */
+export function extractUsage(event: QwenEvent): TurnUsage | null {
+    const usage = (event.response as { usage?: Record<string, unknown> } | undefined)?.usage;
+    if (!usage) return null;
+
+    const inputDetails = (usage.input_tokens_details ?? {}) as Record<string, unknown>;
+    const outputDetails = (usage.output_tokens_details ?? {}) as Record<string, unknown>;
+
+    const num = (value: unknown) => (typeof value === 'number' ? value : 0);
+
+    return {
+        input_text_tokens: num(inputDetails.text_tokens),
+        input_audio_tokens: num(inputDetails.audio_tokens),
+        output_text_tokens: num(outputDetails.text_tokens),
+        output_audio_tokens: num(outputDetails.audio_tokens),
+    };
+}
+
 export function isResponseCancelled(event: QwenEvent): boolean {
     return event.type === 'response.cancelled';
 }

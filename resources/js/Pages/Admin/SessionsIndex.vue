@@ -11,6 +11,7 @@ defineProps<{
         status: string;
         duration_s: number;
         turn_count: number;
+        cost_micro: number;
         started_at: string | null;
     }>;
 }>();
@@ -19,6 +20,10 @@ function fmtDuration(totalSeconds: number): string {
     const m = Math.floor(totalSeconds / 60);
     const s = totalSeconds % 60;
     return `${m}:${String(s).padStart(2, '0')}`;
+}
+
+function fmtCost(micro: number): string {
+    return `¥${(micro / 1e6).toFixed(4)}`;
 }
 
 const statusLabel: Record<string, string> = {
@@ -37,7 +42,10 @@ function finalizeSession(id: number): void {
     <div class="mx-auto max-w-5xl px-4 py-8">
         <div class="mb-6 flex items-center justify-between">
             <h1 class="text-xl font-bold text-slate-800">会话记录</h1>
-            <Link href="/admin/visitors" class="text-sm text-indigo-600 hover:underline">访客列表 →</Link>
+            <div class="flex gap-4">
+                <Link href="/admin/scenarios" class="text-sm text-indigo-600 hover:underline">场景管理 →</Link>
+                <Link href="/admin/visitors" class="text-sm text-indigo-600 hover:underline">访客列表 →</Link>
+            </div>
         </div>
 
         <div class="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
@@ -50,6 +58,7 @@ function finalizeSession(id: number): void {
                         <th class="px-4 py-3">状态</th>
                         <th class="px-4 py-3">时长</th>
                         <th class="px-4 py-3">回合</th>
+                        <th class="px-4 py-3">费用（估）</th>
                         <th class="px-4 py-3">开始时间</th>
                         <th class="px-4 py-3"></th>
                     </tr>
@@ -72,6 +81,7 @@ function finalizeSession(id: number): void {
                         </td>
                         <td class="px-4 py-3">{{ fmtDuration(session.duration_s) }}</td>
                         <td class="px-4 py-3">{{ session.turn_count }}</td>
+                        <td class="px-4 py-3 font-mono text-xs">{{ fmtCost(session.cost_micro) }}</td>
                         <td class="px-4 py-3 text-xs text-slate-500">{{ session.started_at }}</td>
                         <td class="px-4 py-3 text-right">
                             <span v-if="session.status === 'active'">
@@ -91,7 +101,7 @@ function finalizeSession(id: number): void {
                         </td>
                     </tr>
                     <tr v-if="sessions.length === 0">
-                        <td colspan="8" class="px-4 py-8 text-center text-slate-400">还没有会话记录</td>
+                        <td colspan="9" class="px-4 py-8 text-center text-slate-400">还没有会话记录</td>
                     </tr>
                 </tbody>
             </table>

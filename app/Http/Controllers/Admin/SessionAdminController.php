@@ -34,6 +34,7 @@ class SessionAdminController extends Controller
                 'status' => $session->status,
                 'duration_s' => $session->duration_s,
                 'turn_count' => $session->turn_count,
+                'cost_micro' => (int) $session->cost_micro,
                 'started_at' => $session->started_at?->toDateTimeString(),
             ]);
 
@@ -83,6 +84,11 @@ class SessionAdminController extends Controller
                 'status' => $session->status,
                 'duration_s' => $session->duration_s,
                 'turn_count' => $session->turn_count,
+                'cost_micro' => (int) $session->cost_micro,
+                'input_text_tokens' => (int) $session->input_text_tokens,
+                'input_audio_tokens' => (int) $session->input_audio_tokens,
+                'output_text_tokens' => (int) $session->output_text_tokens,
+                'output_audio_tokens' => (int) $session->output_audio_tokens,
                 'started_at' => $session->started_at?->toDateTimeString(),
                 'ended_at' => $session->ended_at?->toDateTimeString(),
                 'audio_urls' => [

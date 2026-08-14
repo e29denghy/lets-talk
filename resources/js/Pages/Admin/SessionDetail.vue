@@ -13,6 +13,11 @@ const props = defineProps<{
         status: string;
         duration_s: number;
         turn_count: number;
+        cost_micro: number;
+        input_text_tokens: number;
+        input_audio_tokens: number;
+        output_text_tokens: number;
+        output_audio_tokens: number;
         started_at: string | null;
         ended_at: string | null;
         audio_urls: { student: string | null; ai: string | null };
@@ -71,6 +76,19 @@ function pauseBoth(): void {
             <div>
                 <p class="text-xs text-slate-400">时间</p>
                 <p class="font-medium text-slate-700">{{ props.session.started_at }}</p>
+            </div>
+            <div>
+                <p class="text-xs text-slate-400">费用（估算）</p>
+                <p class="font-mono text-sm font-semibold text-rose-600">
+                    ¥{{ (props.session.cost_micro / 1e6).toFixed(4) }}
+                </p>
+            </div>
+            <div>
+                <p class="text-xs text-slate-400">Token 用量（文本进/音频进/文本出/音频出）</p>
+                <p class="font-mono text-sm text-slate-700">
+                    {{ props.session.input_text_tokens }} / {{ props.session.input_audio_tokens }} /
+                    {{ props.session.output_text_tokens }} / {{ props.session.output_audio_tokens }}
+                </p>
             </div>
         </div>
 

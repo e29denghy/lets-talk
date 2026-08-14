@@ -100,15 +100,25 @@ class VoiceSessionService
     }
 
     /**
-     * 批量落库字幕/回合（按 seq 幂等 upsert）。
+     * 批量落库字幕/回合（按 seq 幂等 upsert），累计 token 用量与费用。
      *
-     * @param  array<int, array{seq:int, speaker:string, text:string, start_ms?:int, end_ms?:int, latency_ms?:int}>  $turns
+     * @param  array<int, array{seq:int, speaker:string, text:string, start_ms?:int, end_ms?:int, latency_ms?:int, input_text_tokens?:int, input_audio_tokens?:int, output_text_tokens?:int, output_audio_tokens?:int}>  $turns
      */
     public function storeTurns(ConversationSession $session, array $turns): int
     {
         $rows = [];
+        $sessionInputText = $sessionInputAudio = $sessionOutputText = $sessionOutputAudio = 0;
+        $sessionCostMicro = 0;
 
         foreach ($turns as $turn) {
+            $usage = $this->normalizeUsage($turn);
+
+            $sessionInputText += $usage['input_text_tokens'];
+            $sessionInputAudio += $usage['input_audio_tokens'];
+            $sessionOutputText += $usage['output_text_tokens'];
+            $sessionOutputAudio += $usage['output_audio_tokens'];
+            $sessionCostMicro += $usage['cost_micro'];
+
             $rows[] = [
                 'session_id' => $session->id,
                 'seq' => (int) $turn['seq'],
@@ -117,6 +127,7 @@ class VoiceSessionService
                 'start_ms' => $turn['start_ms'] ?? null,
                 'end_ms' => $turn['end_ms'] ?? null,
                 'latency_ms' => $turn['latency_ms'] ?? null,
+                ...$usage,
                 'created_at' => now(),
                 'updated_at' => now(),
             ];
@@ -126,11 +137,48 @@ class VoiceSessionService
             return 0;
         }
 
-        ConversationTurn::upsert($rows, ['session_id', 'seq'], ['speaker', 'text', 'start_ms', 'end_ms', 'latency_ms', 'updated_at']);
+        ConversationTurn::upsert($rows, ['session_id', 'seq'], [
+            'speaker', 'text', 'start_ms', 'end_ms', 'latency_ms',
+            'input_text_tokens', 'input_audio_tokens', 'output_text_tokens', 'output_audio_tokens', 'cost_micro',
+            'updated_at',
+        ]);
 
-        $session->update(['turn_count' => ConversationTurn::where('session_id', $session->id)->count()]);
+        $session->update([
+            'turn_count' => ConversationTurn::where('session_id', $session->id)->count(),
+            'input_text_tokens' => ConversationTurn::where('session_id', $session->id)->sum('input_text_tokens') ?? 0,
+            'input_audio_tokens' => ConversationTurn::where('session_id', $session->id)->sum('input_audio_tokens') ?? 0,
+            'output_text_tokens' => ConversationTurn::where('session_id', $session->id)->sum('output_text_tokens') ?? 0,
+            'output_audio_tokens' => ConversationTurn::where('session_id', $session->id)->sum('output_audio_tokens') ?? 0,
+            'cost_micro' => ConversationTurn::where('session_id', $session->id)->sum('cost_micro') ?? 0,
+        ]);
 
         return count($rows);
+    }
+
+    /**
+     * 标准化 token 用量并按官方单价估算费用（百万分之一元人民币）。
+     */
+    private function normalizeUsage(array $turn): array
+    {
+        $inputText = max(0, (int) ($turn['input_text_tokens'] ?? 0));
+        $inputAudio = max(0, (int) ($turn['input_audio_tokens'] ?? 0));
+        $outputText = max(0, (int) ($turn['output_text_tokens'] ?? 0));
+        $outputAudio = max(0, (int) ($turn['output_audio_tokens'] ?? 0));
+
+        $pricing = config('voice.pricing.'.config('voice.provider'), config('voice.pricing.qwen_omni', []));
+
+        $costRmb = ($inputAudio / 1_000_000) * (float) ($pricing['input_audio_rmb_per_1m'] ?? 0)
+            + ($inputText / 1_000_000) * (float) ($pricing['input_text_rmb_per_1m'] ?? 0)
+            + ($outputAudio / 1_000_000) * (float) ($pricing['output_audio_rmb_per_1m'] ?? 0)
+            + ($outputText / 1_000_000) * (float) ($pricing['output_text_rmb_per_1m'] ?? 0);
+
+        return [
+            'input_text_tokens' => $inputText,
+            'input_audio_tokens' => $inputAudio,
+            'output_text_tokens' => $outputText,
+            'output_audio_tokens' => $outputAudio,
+            'cost_micro' => (int) round($costRmb * 1_000_000),
+        ];
     }
 
     /**

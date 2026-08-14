@@ -18,6 +18,11 @@ class ConversationTurn extends Model
         'start_ms',
         'end_ms',
         'latency_ms',
+        'input_text_tokens',
+        'input_audio_tokens',
+        'output_text_tokens',
+        'output_audio_tokens',
+        'cost_micro',
     ];
 
     public function session(): BelongsTo

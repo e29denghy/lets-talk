@@ -144,6 +144,10 @@ class SessionController extends Controller
             'turns.*.start_ms' => ['nullable', 'integer', 'min:0'],
             'turns.*.end_ms' => ['nullable', 'integer', 'min:0'],
             'turns.*.latency_ms' => ['nullable', 'integer', 'min:0'],
+            'turns.*.input_text_tokens' => ['nullable', 'integer', 'min:0'],
+            'turns.*.input_audio_tokens' => ['nullable', 'integer', 'min:0'],
+            'turns.*.output_text_tokens' => ['nullable', 'integer', 'min:0'],
+            'turns.*.output_audio_tokens' => ['nullable', 'integer', 'min:0'],
         ]);
 
         $count = $this->sessions->storeTurns($session, $data['turns']);

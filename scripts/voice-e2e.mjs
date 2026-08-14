@@ -93,6 +93,7 @@ const ws = new WebSocket(start.credentials.ws_url, {
 
 const stats = { aiAudioBytes: 0, aiAudioChunks: 0, studentText: '', aiText: '' };
 const aiAudioParts = []; // 收集 AI 音频帧（base64 解码后），用于模拟浏览器录音上传
+let lastUsage = null; // response.done 中的 token 用量
 let updated = false;
 let finished = false;
 
@@ -117,7 +118,12 @@ async function finish() {
             body: JSON.stringify({
                 turns: [
                     { seq: 1, speaker: 'student', text: stats.studentText },
-                    { seq: 2, speaker: 'assistant', text: stats.aiText },
+                    {
+                        seq: 2,
+                        speaker: 'assistant',
+                        text: stats.aiText,
+                        ...(lastUsage ?? {}),
+                    },
                 ],
             }),
         });
@@ -215,10 +221,21 @@ ws.on('message', (data, isBinary) => {
             stats.aiText = ev.transcript;
             console.log(`[e2e] AI 转写: "${ev.transcript}"`);
             break;
-        case 'response.done':
+        case 'response.done': {
+            const usage = ev.response?.usage ?? null;
+            if (usage) {
+                lastUsage = {
+                    input_text_tokens: usage.input_tokens_details?.text_tokens ?? 0,
+                    input_audio_tokens: usage.input_tokens_details?.audio_tokens ?? 0,
+                    output_text_tokens: usage.output_tokens_details?.text_tokens ?? 0,
+                    output_audio_tokens: usage.output_tokens_details?.audio_tokens ?? 0,
+                };
+                console.log('[e2e] usage:', lastUsage);
+            }
             console.log('[e2e] response.done');
             setTimeout(finish, 600);
             break;
+        }
         case 'error':
             console.error('[e2e] 服务端错误:', JSON.stringify(ev.error));
             break;

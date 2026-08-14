@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Admin\ScenarioAdminController;
 use App\Http\Controllers\Admin\SessionAdminController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
@@ -21,4 +22,9 @@ Route::middleware('auth.basic')->prefix('admin')->name('admin.')->group(function
     Route::get('/sessions/{session}/audio/{channel}', [SessionAdminController::class, 'audio'])
         ->whereIn('channel', ['student', 'ai'])
         ->name('sessions.audio');
+
+    Route::get('/scenarios', [ScenarioAdminController::class, 'index'])->name('scenarios.index');
+    Route::post('/scenarios', [ScenarioAdminController::class, 'store'])->name('scenarios.store');
+    Route::put('/scenarios/{scenario}', [ScenarioAdminController::class, 'update'])->name('scenarios.update');
+    Route::delete('/scenarios/{scenario}', [ScenarioAdminController::class, 'destroy'])->name('scenarios.destroy');
 });

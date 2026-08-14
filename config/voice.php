@@ -51,6 +51,23 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | 供应商计费单价（人民币 / 百万 token，用于会话成本估算）
+    |--------------------------------------------------------------------------
+    | qwen3-omni-flash-realtime（百炼官方定价，用户提供）：
+    |   输入-音频 ¥27、输入-文本 ¥3.3、输出-文本+音频 ¥107（输出的文本不计费）、
+    |   纯文本输出 ¥20（实时语音模式下输出文本不计费，按 0 处理）。
+    */
+    'pricing' => [
+        'qwen_omni' => [
+            'input_audio_rmb_per_1m' => 27.0,
+            'input_text_rmb_per_1m' => 3.3,
+            'output_audio_rmb_per_1m' => 107.0,
+            'output_text_rmb_per_1m' => 0.0, // 实时语音输出的文本不计费；纯文本输出为 ¥20/1M
+        ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | 儿童对话护栏（按语言附加在场景 system prompt 之后）
     |--------------------------------------------------------------------------
     */
@@ -63,6 +80,7 @@ return [
             'Stay on the practice topic; if the child drifts away, kindly bring the conversation back.',
             'Never discuss adult, violent, political, or any topic unsuitable for children.',
             'If the child is stuck or silent for a long time, offer a friendly hint or repeat the question slowly.',
+            'The child may switch between Chinese and English at any time. Always reply in the language the child just used. If the child asks to switch languages (for example "speak English" or "说中文"), switch immediately and briefly confirm in the new language.',
         ],
         'zh' => [
             '全程使用中文交流，用词简单、句子简短，适合小学生。',
@@ -72,6 +90,7 @@ return [
             '围绕当前练习话题展开；孩子跑题时，温和地把话题拉回来。',
             '绝不讨论成人、暴力、政治等任何不适合儿童的内容。',
             '孩子卡住或长时间沉默时，友好地给一点提示，或放慢语速重复问题。',
+            '孩子随时可以在中文和英文之间切换。始终用孩子刚刚使用的语言回复。如果孩子要求切换语言（例如「说中文」或"speak English"），立即切换并用新语言简短确认。',
         ],
     ],
 
@@ -89,14 +108,14 @@ return [
             'api_key' => env('VOICE_QWEN_OMNI_API_KEY'),
             // 可选模型（以官方文档为准）：qwen3-omni-flash-realtime（默认，性价比高）、
             // qwen3.5-omni-flash-realtime / qwen3.5-omni-plus-realtime（新一代）。
-            'model' => env('VOICE_QWEN_OMNI_MODEL', 'qwen3-omni-flash-realtime'),
+            'model' => env('VOICE_QWEN_OMNI_MODEL', 'qwen3.5-omni-flash-realtime'),
             'ws_url' => env('VOICE_QWEN_OMNI_WS_URL', 'wss://dashscope.aliyuncs.com/api-ws/v1/realtime'),
             // 官方鉴权是 Authorization: Bearer <API-Key> 请求头；浏览器 WebSocket 无法自定义
             // 请求头，直连模式下只能把凭据放进 URL query 参数（参数名以实测为准）。
             // 若服务端拒绝 query 鉴权：生产环境改用 STS 临时凭证签名，或走服务器中继。
             'auth_query_param' => env('VOICE_QWEN_OMNI_AUTH_QUERY_PARAM', 'api-key'),
             'token_ttl_seconds' => (int) env('VOICE_QWEN_OMNI_TOKEN_TTL', 600),
-            // 儿童友好音色（实测可用：Cherry/Serena/Ethan/Chelsie；Tina 不支持）
+            // 儿童友好音色（qwen3.5 实测可用：Serena/Ethan/Tina；Cherry/Chelsie 不支持）
             'voice' => env('VOICE_QWEN_OMNI_VOICE', 'Serena'),
             'language' => 'en-US',
             // 回复长度硬上限（配合护栏的「一两句短句」提示，防止长篇大论）

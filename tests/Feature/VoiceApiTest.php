@@ -264,6 +264,84 @@ class VoiceApiTest extends TestCase
         Storage::disk('local')->assertExists($session->student_audio_path);
     }
 
+    public function test_turns_with_usage_accumulate_session_totals_and_cost(): void
+    {
+        Storage::fake('local');
+
+        $this->registerVisitor();
+        $sessionId = $this->beginSession(Scenario::firstOrFail()->id);
+
+        $this->postJson("/api/voice/sessions/{$sessionId}/turns", [
+            'turns' => [
+                ['seq' => 1, 'speaker' => 'student', 'text' => 'Hello'],
+                [
+                    'seq' => 2,
+                    'speaker' => 'assistant',
+                    'text' => 'Hi!',
+                    'input_text_tokens' => 1000,
+                    'input_audio_tokens' => 2000,
+                    'output_audio_tokens' => 500,
+                ],
+            ],
+        ])->assertOk()->assertJson(['stored' => 2]);
+
+        $session = ConversationSession::findOrFail($sessionId);
+
+        $this->assertSame(1000, (int) $session->input_text_tokens);
+        $this->assertSame(2000, (int) $session->input_audio_tokens);
+        $this->assertSame(500, (int) $session->output_audio_tokens);
+
+        // 成本：2000/1M*27 + 1000/1M*3.3 + 500/1M*107 = 0.1108 元 = 110800 微元
+        $this->assertSame(110800, (int) $session->cost_micro);
+    }
+
+    public function test_admin_can_manage_scenario_cards(): void
+    {
+        User::create([
+            'name' => 'Admin',
+            'email' => 'admin@example.com',
+            'password' => Hash::make('password'),
+            'email_verified_at' => now(),
+        ]);
+
+        $basic = ['Authorization' => 'Basic '.base64_encode('admin@example.com:password')];
+
+        // 创建
+        $this->post('/admin/scenarios', [
+            'name' => '水果店',
+            'slug' => 'fruit-shop',
+            'level' => 1,
+            'description' => '练习买水果',
+            'system_prompt' => 'You are a fruit seller. Ask one question at a time.',
+            'target_vocab' => 'apple, banana',
+            'sort_order' => 99,
+            'is_active' => true,
+        ], $basic)->assertRedirect();
+
+        $this->assertDatabaseHas('scenarios', ['slug' => 'fruit-shop', 'name' => '水果店', 'is_active' => true]);
+        $scenario = Scenario::where('slug', 'fruit-shop')->firstOrFail();
+        $this->assertSame(['apple', 'banana'], $scenario->target_vocab);
+
+        // 更新
+        $this->put("/admin/scenarios/{$scenario->id}", [
+            'name' => '水果店（改）',
+            'slug' => 'fruit-shop',
+            'level' => 2,
+            'description' => 'x',
+            'system_prompt' => 'x',
+            'target_vocab' => '',
+            'sort_order' => 1,
+            'is_active' => false,
+        ], $basic)->assertRedirect();
+
+        $this->assertSame('水果店（改）', $scenario->fresh()->name);
+        $this->assertFalse((bool) $scenario->fresh()->is_active);
+
+        // 删除
+        $this->delete("/admin/scenarios/{$scenario->id}", [], $basic)->assertRedirect();
+        $this->assertDatabaseMissing('scenarios', ['slug' => 'fruit-shop']);
+    }
+
     public function test_admin_can_download_session_audio_with_basic_auth(): void
     {
         Storage::fake('local');

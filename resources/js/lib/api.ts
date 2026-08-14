@@ -42,6 +42,10 @@ export interface TurnInput {
     start_ms?: number;
     end_ms?: number;
     latency_ms?: number;
+    input_text_tokens?: number;
+    input_audio_tokens?: number;
+    output_text_tokens?: number;
+    output_audio_tokens?: number;
 }
 
 export class ApiError extends Error {

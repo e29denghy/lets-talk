@@ -271,6 +271,19 @@ function onSocketMessage(event: MessageEvent): void {
         }
 
         if (qwen.isResponseDone(parsed) || qwen.isResponseCancelled(parsed)) {
+            // 成本核算：把本次响应的 token 用量记到最近一条 AI 回合
+            if (qwen.isResponseDone(parsed)) {
+                const usage = qwen.extractUsage(parsed);
+                if (usage) {
+                    for (let i = turns.length - 1; i >= 0; i--) {
+                        if (turns[i].speaker === 'assistant' && turns[i].input_audio_tokens === undefined) {
+                            Object.assign(turns[i], usage);
+                            break;
+                        }
+                    }
+                }
+            }
+
             aiSpeaking = false;
             suppressAiAudio = false;
 
