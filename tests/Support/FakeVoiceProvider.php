@@ -29,10 +29,11 @@ class FakeVoiceProvider implements RealtimeVoiceProvider
                 'model' => 'fake-model',
                 'voice' => 'Fake',
                 'sample_rate' => 16000,
+                'output_sample_rate' => 16000,
                 'session_init' => [
                     'type' => 'session.update',
                     'session' => [
-                        'modalities' => ['audio', 'text'],
+                        'modalities' => ['text', 'audio'],
                         'instructions' => null,
                         'voice' => 'Fake',
                     ],

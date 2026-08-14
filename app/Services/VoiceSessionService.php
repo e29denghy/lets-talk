@@ -188,6 +188,11 @@ class VoiceSessionService
             return null;
         }
 
+        // 学生声道 16kHz、AI 声道 24kHz（供应商输出固定 24k）
+        $sampleRate = $channel === 'student'
+            ? (int) config('voice.audio.sample_rate', 16000)
+            : (int) config('voice.audio.output_sample_rate', 24000);
+
         $wavPath = $this->dirPath($session)."/{$channel}.wav";
 
         // local 磁盘就是真实文件系统，直接取路径流式读写，避免整文件载入内存
@@ -212,7 +217,7 @@ class VoiceSessionService
         try {
             $pcmSize = filesize($pcmFullPath) ?: 0;
 
-            fwrite($out, $this->wavHeader($pcmSize, (int) config('voice.audio.sample_rate', 16000)));
+            fwrite($out, $this->wavHeader($pcmSize, $sampleRate));
 
             while (! feof($in)) {
                 $chunk = fread($in, 1024 * 1024);

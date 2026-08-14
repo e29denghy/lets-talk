@@ -22,6 +22,7 @@ export interface SessionCredentials {
     voice?: string;
     language?: string;
     sample_rate?: number;
+    output_sample_rate?: number;
     session_init?: Record<string, unknown>;
 }
 

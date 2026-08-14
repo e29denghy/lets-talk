@@ -48,11 +48,12 @@ VOICE_DAILY_QUOTA_SECONDS=3600          # 每访客每日 60 分钟
 VOICE_MAX_SESSION_SECONDS=1800          # 单会话 30 分钟
 ```
 
-- **直连模式**：浏览器 WebSocket 无法带 Header，凭据放 URL query。内部开发可用 API Key；
-  **生产必须换阿里云 STS 临时凭证或走服务器中继**（见 `config/voice.php` 注释）。
-- Qwen-Omni 的 WS 事件名/字段以官方文档为准：
-  https://help.aliyun.com/zh/model-studio/omni/ ，联调时核对
-  `app/Realtime/Providers/QwenOmniProvider.php` 与 `resources/js/lib/providers/qwenOmniClient.ts`。
+- **直连模式**：浏览器 WebSocket 无法带 Header，凭据放 URL query。官方鉴权是 `Authorization: Bearer`
+  （[实时多模态 API 文档](https://help.aliyun.com/zh/model-studio/omni-realtime-api)）；
+  若服务端拒绝 query 鉴权，**生产必须换阿里云 STS 临时凭证或走服务器中继**（见 `config/voice.php` 注释）。
+- 协议已按官方文档（2026-07 版）对齐：输入 16kHz PCM、**输出 24kHz PCM**、
+  `server_vad` 自动话轮 + 自动打断（`interrupt_response`）、转录模型 `qwen3-asr-flash-realtime`、
+  事件字段 `response.audio.delta` 的音频在 `delta` 字段。
 
 ## 管理端（内部使用）
 

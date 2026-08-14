@@ -17,7 +17,8 @@ return [
     |--------------------------------------------------------------------------
     */
     'audio' => [
-        'sample_rate' => 16000,             // 采集与上行 PCM 采样率（Hz）
+        'sample_rate' => 16000,             // 学生输入 PCM 采样率（16kHz，供应商要求）
+        'output_sample_rate' => 24000,      // AI 输出 PCM 采样率（24kHz，供应商固定，不可改）
         'chunk_interval_seconds' => 20,     // 录音分片上传间隔
         'max_chunk_bytes' => 2 * 1024 * 1024, // 达到该大小立即上传
     ],
@@ -58,14 +59,27 @@ return [
         'qwen_omni' => [
             'driver' => App\Realtime\Providers\QwenOmniProvider::class,
             'api_key' => env('VOICE_QWEN_OMNI_API_KEY'),
+            // 可选模型（以官方文档为准）：qwen3-omni-flash-realtime（默认，性价比高）、
+            // qwen3.5-omni-flash-realtime / qwen3.5-omni-plus-realtime（新一代）。
             'model' => env('VOICE_QWEN_OMNI_MODEL', 'qwen3-omni-flash-realtime'),
             'ws_url' => env('VOICE_QWEN_OMNI_WS_URL', 'wss://dashscope.aliyuncs.com/api-ws/v1/realtime'),
-            // 浏览器 WebSocket 无法自定义 Header，token 只能走 query 参数；
-            // 鉴权参数名以官方实时文档为准（接入时核对）。
+            // 官方鉴权是 Authorization: Bearer <API-Key> 请求头；浏览器 WebSocket 无法自定义
+            // 请求头，直连模式下只能把凭据放进 URL query 参数（参数名以实测为准）。
+            // 若服务端拒绝 query 鉴权：生产环境改用 STS 临时凭证签名，或走服务器中继。
             'auth_query_param' => env('VOICE_QWEN_OMNI_AUTH_QUERY_PARAM', 'api-key'),
             'token_ttl_seconds' => (int) env('VOICE_QWEN_OMNI_TOKEN_TTL', 600),
             'voice' => env('VOICE_QWEN_OMNI_VOICE', 'Cherry'),
             'language' => 'en-US',
+            // 服务端 VAD（server_vad）：自动判断话轮、说话结束自动提交、学生插话自动打断
+            'vad' => [
+                'type' => 'server_vad',
+                'threshold' => (float) env('VOICE_QWEN_OMNI_VAD_THRESHOLD', 0.5),
+                'prefix_padding_ms' => 300,
+                'silence_duration_ms' => (int) env('VOICE_QWEN_OMNI_VAD_SILENCE_MS', 800),
+                'create_response' => true,
+                'interrupt_response' => true,
+            ],
+            'temperature' => (float) env('VOICE_QWEN_OMNI_TEMPERATURE', 0.7),
             // 生产环境应改用阿里云 STS 临时凭证，禁止把长期 API Key 下发浏览器。
             'sts_enabled' => (bool) env('VOICE_QWEN_OMNI_STS_ENABLED', false),
         ],

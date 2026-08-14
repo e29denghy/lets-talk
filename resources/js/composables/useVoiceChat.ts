@@ -50,11 +50,12 @@ let uploader: ChunkUploader | null = null;
 let socket: WebSocket | null = null;
 
 let aiSpeaking = false;
-let studentSpeaking = false;
-let studentTranscriptSeen = false;
+let lastStudentItemId: string | null = null;
 let manualClose = false;
 let suppressAiAudio = false;
 let latencyAnchor: number | null = null;
+let sessionConfigured = false;
+let pendingSessionUpdate: string | null = null;
 let turns: TurnInput[] = [];
 let nextSeq = 1;
 let durationTimer: number | null = null;
@@ -79,14 +80,20 @@ async function start(scenarioId: number, nickname?: string, grade?: number): Pro
     try {
         await ensureVisitor(nickname, grade);
 
-        // 用户手势内解锁自动播放
-        player = new PcmPlayer();
-        await player.unlock();
-
         const result = await api.startSession(scenarioId);
         state.sessionId = result.session.id;
         state.quota = result.quota;
         sessionStartedAt = Date.now();
+
+        // 用户手势内解锁自动播放（AI 输出是 24kHz PCM）
+        player = new PcmPlayer();
+        await player.unlock(result.credentials.output_sample_rate ?? result.audio.sample_rate);
+
+        // 预先组装 session.update，等收到 session.created 后发送
+        const preset = (result.credentials.session_init ?? { session: {} }) as {
+            session: Record<string, unknown>;
+        };
+        pendingSessionUpdate = qwen.sessionUpdate(preset, result.system_prompt);
 
         durationTimer = window.setInterval(() => {
             state.durationS = Math.floor((Date.now() - sessionStartedAt) / 1000);
@@ -122,47 +129,37 @@ async function start(scenarioId: number, nickname?: string, grade?: number): Pro
     }
 }
 
-/** 学生 PCM 帧处理：本地 VAD 控制起止、上行、录音、打断判定。 */
+/**
+ * 学生 PCM 帧处理：全量推流 + 录音（话轮由服务端 server_vad 判断）。
+ * 本地 VAD 只用于「AI 说话时学生插嘴」的快速静音（服务端会真正打断生成）。
+ */
 function onStudentPcm(pcm: Int16Array): void {
     if (!socket || socket.readyState !== WebSocket.OPEN) return;
 
-    vad ??= new EnergyVad({ threshold: 0.02, hangoverMs: 450 });
+    uploader?.append('student', pcm);
+    socket.send(qwen.appendAudio(pcm));
 
-    const active = vad.process(pcm);
+    vad ??= new EnergyVad({ threshold: 0.02, hangoverMs: 400 });
 
-    if (active) {
-        uploader?.append('student', pcm);
+    if (vad.process(pcm) && aiSpeaking) {
+        player?.flush();
+        aiSpeaking = false;
 
-        if (!studentSpeaking) {
-            // 学生新开口：若 AI 正在说/思考 → 打断
-            if (aiSpeaking || state.status === 'thinking') {
-                interrupt();
-            }
-            studentSpeaking = true;
-            studentTranscriptSeen = false;
+        if (state.status === 'speaking' || state.status === 'thinking') {
+            state.status = 'listening';
         }
-
-        socket.send(qwen.appendAudio(pcm));
-        return;
-    }
-
-    if (studentSpeaking) {
-        studentSpeaking = false;
-        socket.send(qwen.commitAudio());
-        state.status = 'thinking';
-        latencyAnchor = performance.now();
     }
 }
 
-/** 打断 AI：取消生成 + 清空播放队列，回到聆听状态。 */
+/** 手动打断（头像点击）：仅在 AI 生成中发送 cancel，避免「无响应可取消」的 error 事件。 */
 function interrupt(): void {
-    if (socket && socket.readyState === WebSocket.OPEN) {
+    if (aiSpeaking && socket && socket.readyState === WebSocket.OPEN) {
         socket.send(qwen.cancelResponse());
+        suppressAiAudio = true;
     }
 
     player?.flush();
     aiSpeaking = false;
-    suppressAiAudio = true;
     latencyAnchor = null;
 
     if (state.status === 'speaking' || state.status === 'thinking') {
@@ -180,15 +177,39 @@ function onSocketMessage(event: MessageEvent): void {
             return;
         }
 
+        // 连接后第一个事件：拿到默认会话配置后发送我们的 session.update
+        if (qwen.isSessionCreated(parsed) && !sessionConfigured && pendingSessionUpdate) {
+            sessionConfigured = true;
+            socket?.send(pendingSessionUpdate);
+            pendingSessionUpdate = null;
+            return;
+        }
+
+        // 服务端错误（如配置不合法）：展示但不中断会话
+        if (parsed.type === 'error') {
+            const message = (parsed.error as { message?: string } | undefined)?.message ?? '语音服务返回错误';
+            state.error = message;
+            return;
+        }
+
+        // 学生说完 → 进入思考（记录首包延迟锚点）
+        if (qwen.isSpeechStopped(parsed)) {
+            state.status = 'thinking';
+            latencyAnchor = performance.now();
+        }
+
         const transcript = qwen.normalizeEvent(parsed);
 
         if (transcript) {
             addSubtitle(transcript.speaker, transcript.text);
 
-            if (transcript.speaker === 'student' && !studentTranscriptSeen) {
-                studentTranscriptSeen = true;
-                addTurn('student', transcript.text);
-            } else if (transcript.speaker === 'assistant') {
+            if (transcript.speaker === 'student') {
+                const itemId = typeof parsed.item_id === 'string' ? parsed.item_id : null;
+                if (itemId === null || itemId !== lastStudentItemId) {
+                    lastStudentItemId = itemId;
+                    addTurn('student', transcript.text);
+                }
+            } else {
                 addTurn('assistant', transcript.text);
             }
         }
@@ -205,7 +226,7 @@ function onSocketMessage(event: MessageEvent): void {
                     aiSpeaking = true;
                     state.status = 'speaking';
 
-                    // 记录首包延迟到最近一条学生回合
+                    // 首包延迟记入最近一条学生回合
                     if (latencyAnchor !== null) {
                         const ms = Math.round(performance.now() - latencyAnchor);
                         for (let i = turns.length - 1; i >= 0; i--) {
@@ -236,7 +257,7 @@ function onSocketMessage(event: MessageEvent): void {
     }
 
     if (event.data instanceof ArrayBuffer) {
-        // 供应商直接下发二进制 PCM 帧的情况
+        // 供应商若直接下发二进制 PCM 帧（非文档路径，兼容处理）
         const pcm = new Int16Array(event.data);
 
         if (pcm.length > 0) {
@@ -263,6 +284,7 @@ function openSocket(result: SessionStartResponse): Promise<void> {
     return new Promise<void>((resolve, reject) => {
         const ws = new WebSocket(result.credentials.ws_url);
         socket = ws;
+        ws.onmessage = onSocketMessage;
 
         const timeout = window.setTimeout(() => {
             ws.close();
@@ -271,13 +293,6 @@ function openSocket(result: SessionStartResponse): Promise<void> {
 
         ws.onopen = () => {
             window.clearTimeout(timeout);
-
-            const preset = (result.credentials.session_init ?? { session: {} }) as {
-                session: Record<string, unknown>;
-            };
-            ws.send(qwen.sessionInit(preset, result.system_prompt));
-
-            ws.onmessage = onSocketMessage;
             resolve();
         };
 
@@ -350,13 +365,15 @@ async function teardown(): Promise<void> {
     socket = null;
 
     aiSpeaking = false;
-    studentSpeaking = false;
     latencyAnchor = null;
 }
 
 function reset(): void {
     manualClose = false;
     suppressAiAudio = false;
+    sessionConfigured = false;
+    pendingSessionUpdate = null;
+    lastStudentItemId = null;
     turns = [];
     nextSeq = 1;
     state.sessionId = null;

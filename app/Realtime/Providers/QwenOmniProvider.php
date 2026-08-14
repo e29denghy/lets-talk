@@ -56,17 +56,22 @@ class QwenOmniProvider implements RealtimeVoiceProvider
                 'voice' => $this->config['voice'] ?? 'Cherry',
                 'language' => $this->config['language'] ?? 'en-US',
                 'sample_rate' => (int) config('voice.audio.sample_rate', 16000),
-                // 客户端 WS 建连后第一条要发送的会话配置（instructions 由客户端填 system_prompt）。
-                // 字段以 Qwen-Omni Realtime 官方文档为准，联调时核对。
+                'output_sample_rate' => (int) config('voice.audio.output_sample_rate', 24000),
+                // 收到 session.created 后客户端要发送的会话配置（instructions 由客户端填 system_prompt）。
+                // 字段对齐官方实时多模态 API 文档（2026-07 版）。
                 'session_init' => [
                     'type' => 'session.update',
                     'session' => [
-                        'modalities' => ['audio', 'text'],
+                        'modalities' => ['text', 'audio'],
                         'instructions' => null,
                         'voice' => $this->config['voice'] ?? 'Cherry',
-                        'input_audio_format' => 'pcm16',
-                        'output_audio_format' => 'pcm16',
-                        'turn_detection' => null, // 由客户端本地 VAD 控制打断
+                        'input_audio_format' => 'pcm',   // 16kHz 输入
+                        'output_audio_format' => 'pcm',  // 24kHz 输出
+                        'input_audio_transcription' => [
+                            'model' => 'qwen3-asr-flash-realtime',
+                        ],
+                        'turn_detection' => $this->config['vad'] ?? null, // server_vad 自动话轮/打断
+                        'temperature' => (float) ($this->config['temperature'] ?? 0.7),
                     ],
                 ],
             ],
