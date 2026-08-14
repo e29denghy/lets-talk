@@ -57,7 +57,8 @@ return [
     'guardrails' => [
         'en' => [
             'Only use simple English words suitable for a primary school student.',
-            'Keep sentences short and speak at a natural, moderate pace.',
+            'Speak slowly and very clearly, with a warm and encouraging tone.',
+            'Keep every reply to ONE or TWO short sentences, then ask the child a question back.',
             'Gently correct mistakes in an encouraging way, e.g. "Almost! Try saying ...".',
             'Stay on the practice topic; if the child drifts away, kindly bring the conversation back.',
             'Never discuss adult, violent, political, or any topic unsuitable for children.',
@@ -65,6 +66,8 @@ return [
         ],
         'zh' => [
             '全程使用中文交流，用词简单、句子简短、语速适中，适合小学生。',
+            '语速放慢，吐字清晰，语气温暖有鼓励性。',
+            '每次回复保持一到两句短句，然后把话题抛回给孩子提问。',
             '用温和鼓励的方式纠正错误，例如「真棒！这句话这样说更好：……」。',
             '围绕当前练习话题展开；孩子跑题时，温和地把话题拉回来。',
             '绝不讨论成人、暴力、政治等任何不适合儿童的内容。',
@@ -93,8 +96,11 @@ return [
             // 若服务端拒绝 query 鉴权：生产环境改用 STS 临时凭证签名，或走服务器中继。
             'auth_query_param' => env('VOICE_QWEN_OMNI_AUTH_QUERY_PARAM', 'api-key'),
             'token_ttl_seconds' => (int) env('VOICE_QWEN_OMNI_TOKEN_TTL', 600),
-            'voice' => env('VOICE_QWEN_OMNI_VOICE', 'Cherry'),
+            // 儿童友好音色（实测可用：Cherry/Serena/Ethan/Chelsie；Tina 不支持）
+            'voice' => env('VOICE_QWEN_OMNI_VOICE', 'Serena'),
             'language' => 'en-US',
+            // 回复长度硬上限（配合护栏的「一两句短句」提示，防止长篇大论）
+            'max_tokens' => (int) env('VOICE_QWEN_OMNI_MAX_TOKENS', 150),
             // 服务端 VAD（server_vad）：自动判断话轮、说话结束自动提交、学生插话自动打断
             'vad' => [
                 'type' => 'server_vad',

@@ -69,6 +69,7 @@ class QwenOmniProvider implements RealtimeVoiceProvider
                         ],
                         'turn_detection' => $this->config['vad'] ?? null, // server_vad 自动话轮/打断
                         'temperature' => (float) ($this->config['temperature'] ?? 0.7),
+                        'max_tokens' => (int) ($this->config['max_tokens'] ?? 150), // 简短回复硬上限
                     ],
                 ],
             ],
