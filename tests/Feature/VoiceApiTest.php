@@ -85,7 +85,7 @@ class VoiceApiTest extends TestCase
 
         $this->getJson('/api/voice/scenarios')
             ->assertOk()
-            ->assertJsonCount(4, 'scenarios');
+            ->assertJsonCount(6, 'scenarios');
     }
 
     public function test_visitor_grade_is_validated(): void
@@ -98,7 +98,7 @@ class VoiceApiTest extends TestCase
     {
         $this->registerVisitor();
 
-        $scenario = Scenario::where('slug', 'greetings')->firstOrFail();
+        $scenario = Scenario::where('slug', 'unit-1-five-senses')->firstOrFail();
 
         $this->postJson('/api/voice/sessions', ['scenario_id' => $scenario->id])
             ->assertCreated()
@@ -115,7 +115,7 @@ class VoiceApiTest extends TestCase
 
         $this->registerVisitor();
 
-        $scenario = Scenario::where('slug', 'zoo')->firstOrFail();
+        $scenario = Scenario::where('slug', 'unit-5-farm')->firstOrFail();
         $sessionId = $this->beginSession($scenario->id);
 
         // 让会话产生真实时长（否则同秒结束 duration=0，配额不累计）
@@ -168,7 +168,7 @@ class VoiceApiTest extends TestCase
             'used_seconds' => 99999,
         ]);
 
-        $scenario = Scenario::firstOrFail();
+        $scenario = Scenario::where('is_active', true)->firstOrFail();
 
         $this->postJson('/api/voice/sessions', ['scenario_id' => $scenario->id])
             ->assertStatus(429);
@@ -179,7 +179,7 @@ class VoiceApiTest extends TestCase
         Storage::fake('local');
 
         $this->registerVisitor('小明', 3);
-        $sessionId = $this->beginSession(Scenario::firstOrFail()->id);
+        $sessionId = $this->beginSession(Scenario::where('is_active', true)->firstOrFail()->id);
 
         // 第二个访客（新 Cookie）
         $this->registerVisitor('小红', 2);
@@ -193,7 +193,7 @@ class VoiceApiTest extends TestCase
 
         $this->registerVisitor();
 
-        $sessionId = $this->beginSession(Scenario::firstOrFail()->id);
+        $sessionId = $this->beginSession(Scenario::where('is_active', true)->firstOrFail()->id);
 
         $this->postJson("/api/voice/sessions/{$sessionId}/reissue")
             ->assertOk()
@@ -207,7 +207,7 @@ class VoiceApiTest extends TestCase
 
         $this->registerVisitor();
 
-        $scenario = Scenario::firstOrFail();
+        $scenario = Scenario::where('is_active', true)->firstOrFail();
 
         $this->postJson('/api/voice/sessions', ['scenario_id' => $scenario->id, 'language' => 'zh'])
             ->assertCreated()
@@ -227,7 +227,7 @@ class VoiceApiTest extends TestCase
         config()->set('voice.relay.secret', 'test-relay-secret');
 
         $this->registerVisitor();
-        $sessionId = $this->beginSession(Scenario::firstOrFail()->id);
+        $sessionId = $this->beginSession(Scenario::where('is_active', true)->firstOrFail()->id);
 
         // 无密钥 → 403
         $this->postJson("/api/voice/sessions/{$sessionId}/relay-init")
@@ -248,7 +248,7 @@ class VoiceApiTest extends TestCase
 
         $this->registerVisitor();
 
-        $sessionId = $this->beginSession(Scenario::firstOrFail()->id);
+        $sessionId = $this->beginSession(Scenario::where('is_active', true)->firstOrFail()->id);
 
         ConversationSession::where('id', $sessionId)
             ->update(['started_at' => now()->subHours(3)]);
@@ -269,7 +269,7 @@ class VoiceApiTest extends TestCase
         Storage::fake('local');
 
         $this->registerVisitor();
-        $sessionId = $this->beginSession(Scenario::firstOrFail()->id);
+        $sessionId = $this->beginSession(Scenario::where('is_active', true)->firstOrFail()->id);
 
         $this->postJson("/api/voice/sessions/{$sessionId}/turns", [
             'turns' => [
@@ -355,7 +355,7 @@ class VoiceApiTest extends TestCase
             'email_verified_at' => now(),
         ]);
 
-        $sessionId = $this->beginSession(Scenario::firstOrFail()->id);
+        $sessionId = $this->beginSession(Scenario::where('is_active', true)->firstOrFail()->id);
 
         $this->postRawAudio($sessionId, 'student', 0, 'PCMDATA-000')->assertOk();
 
