@@ -368,8 +368,12 @@ function reset(): void {
     sessionStartedAt = 0;
 }
 
-/** 结束后回到初始状态（清空本轮内容，回到场景选择）。 */
-function dismiss(): void {
+/** 结束后回到初始状态（先尽力结束服务端会话，再清空本轮内容）。 */
+async function dismiss(): Promise<void> {
+    if (state.sessionId !== null && state.status !== 'ended') {
+        await stop().catch(() => undefined);
+    }
+
     reset();
     state.status = 'idle';
 }
