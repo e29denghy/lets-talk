@@ -16,12 +16,13 @@ import os from 'node:os';
 import path from 'node:path';
 import https from 'node:https';
 import { fileURLToPath } from 'node:url';
+import { Agent, setGlobalDispatcher } from 'undici';
 import WebSocket, { WebSocketServer } from 'ws';
 
-// Node 不读 macOS 钥匙串：信任 Valet 自签 CA（浏览器不受影响，走系统钥匙串）
+// Node 不读 macOS 钥匙串：给 fetch 注入 Valet 自签 CA（浏览器不受影响，走系统钥匙串）
 const valetCa = path.join(os.homedir(), '.config/valet/CA/LaravelValetCASelfSigned.pem');
-if (fs.existsSync(valetCa) && !process.env.NODE_EXTRA_CA_CERTS) {
-    process.env.NODE_EXTRA_CA_CERTS = valetCa;
+if (fs.existsSync(valetCa)) {
+    setGlobalDispatcher(new Agent({ connect: { ca: fs.readFileSync(valetCa) } }));
 }
 
 const PORT = parseInt(process.env.VOICE_RELAY_PORT || '9333', 10);

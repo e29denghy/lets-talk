@@ -1,23 +1,16 @@
-// Vite AudioWorklet：麦克风 PCM 采集
-// 把输入降混为单声道、转 Int16，每 4096 帧一批 postMessage 给主线程（transferable）。
-// 主线程侧在 lib/audio/recorder.ts 中接收并重采样到 16kHz。
-
-// TS 5.9+ 的 DOM lib 不再包含 Worklet 全局类型，这里补充最小声明
-declare class AudioWorkletProcessor {
-    readonly port: MessagePort;
-    process(inputs: Float32Array[][], outputs: Float32Array[][], parameters: Record<string, Float32Array>): boolean;
-}
-
-declare function registerProcessor(
-    name: string,
-    processorCtor: new () => AudioWorkletProcessor,
-): void;
-
+/**
+ * Let's Talk 麦克风采集 AudioWorklet（纯 JS，供浏览器直接加载）。
+ * 把输入降混为单声道、转 Int16，每 4096 帧一批 postMessage 给主线程（transferable）。
+ * 主线程在 resources/js/lib/audio/recorder.ts 中接收并重采样到 16kHz。
+ */
 class PcmCaptureWorklet extends AudioWorkletProcessor {
-    private buf = new Int16Array(4096);
-    private offset = 0;
+    constructor() {
+        super();
+        this.buf = new Int16Array(4096);
+        this.offset = 0;
+    }
 
-    process(inputs: Float32Array[][]): boolean {
+    process(inputs) {
         const input = inputs[0];
 
         if (input && input.length > 0) {

@@ -37,7 +37,8 @@ export class MicRecorder {
         });
 
         this.ctx = new AudioContext();
-        await this.ctx.audioWorklet.addModule(new URL('../../workers/pcm-worklet.ts', import.meta.url));
+        // 纯 JS worklet 放 public/，避免构建产物里的 TS 无法被浏览器执行
+        await this.ctx.audioWorklet.addModule('/js/pcm-capture-worklet.js');
 
         this.source = this.ctx.createMediaStreamSource(this.stream);
         this.node = new AudioWorkletNode(this.ctx, 'pcm-capture');
