@@ -42,6 +42,15 @@ class FakeVoiceProvider implements RealtimeVoiceProvider
         );
     }
 
+    public function upstreamCredentials(ConversationSession $session): array
+    {
+        return [
+            'ws_url' => 'wss://fake.example.test/realtime?model=fake-model',
+            'api_key' => 'fake-api-key',
+            'auth' => 'header',
+        ];
+    }
+
     public function buildSystemPrompt(Scenario $scenario, Visitor $visitor): string
     {
         return strtr($scenario->system_prompt, [

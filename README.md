@@ -38,24 +38,44 @@ valet restart
 # 然后访问 https://lets-talk.test，npm run dev 提供热更新
 ```
 
+## 语音链路架构（中继模式）
+
+Qwen-Omni Realtime 端点只接受 `Authorization: Bearer` 头鉴权（实测 query 鉴权 401），
+浏览器 WebSocket 无法自定义请求头，因此采用服务器中继：
+
+```
+浏览器 ──wss(lets-talk.test:9333, Valet 证书, 自动带访客 Cookie)──► 中继(scripts/voice-relay.mjs)
+中继 ──relay-init(共享密钥 VOICE_RELAY_SECRET + 会话归属校验)──► Laravel
+中继 ──wss(Bearer API Key)──► 百炼 Qwen-Omni Realtime（双向透传）
+```
+
+API Key 只到达中继进程，绝不下发浏览器。启动：
+
+```bash
+npm run relay        # 终端常驻；浏览器对话期间保持运行
+```
+
 ## 语音服务商配置（.env）
 
 ```env
 VOICE_PROVIDER=qwen_omni
-VOICE_QWEN_OMNI_API_KEY=sk-xxx          # 百炼 API Key（开发用）
+VOICE_QWEN_OMNI_API_KEY=sk-xxx          # 百炼 API Key
 VOICE_QWEN_OMNI_MODEL=qwen3-omni-flash-realtime
+VOICE_RELAY_SECRET=<自动生成>            # 中继与 Laravel 的共享密钥（.env 已生成）
 VOICE_DAILY_QUOTA_SECONDS=3600          # 每访客每日 60 分钟
 VOICE_MAX_SESSION_SECONDS=1800          # 单会话 30 分钟
 ```
 
-- **直连模式**：浏览器 WebSocket 无法带 Header，凭据放 URL query。官方鉴权是 `Authorization: Bearer`
-  （[实时多模态 API 文档](https://help.aliyun.com/zh/model-studio/omni-realtime-api)）；
-  若服务端拒绝 query 鉴权，**生产必须换阿里云 STS 临时凭证或走服务器中继**（见 `config/voice.php` 注释）。
-- **连接探测**：拿到 Key 后先跑 `node scripts/qwen-ws-probe.mjs` 验证端点与鉴权
-  （默认 query 模式，`AUTH_MODE=header` 切换 Bearer 模式），再进浏览器联调。
+- **连接探测**（拿到 Key 先验证端点）：`node scripts/qwen-ws-probe.mjs`
+  （默认 Bearer 模式；`AUTH_MODE=query` 可复现 query 鉴权被拒的结论）。
+- **全链路 E2E**（无需浏览器，真实语音 + 录音 + 封存 + 配额）：
+  ```bash
+  say -o /tmp/e2e-speech.aiff "Hello! My name is Xiaoming. I like pandas."
+  afconvert -f WAVE -d LEI16@16000 -c 1 /tmp/e2e-speech.aiff /tmp/e2e-speech.wav
+  NODE_EXTRA_CA_CERTS=~/.config/valet/CA/LaravelValetCASelfSigned.pem node scripts/voice-e2e.mjs /tmp/e2e-speech.wav
+  ```
 - 协议已按官方文档（2026-07 版）对齐：输入 16kHz PCM、**输出 24kHz PCM**、
-  `server_vad` 自动话轮 + 自动打断（`interrupt_response`）、转录模型 `qwen3-asr-flash-realtime`、
-  事件字段 `response.audio.delta` 的音频在 `delta` 字段。
+  `server_vad` 自动话轮 + 自动打断（`interrupt_response`）、转录模型 `qwen3-asr-flash-realtime`。
 
 ## 管理端（内部使用）
 
@@ -101,7 +121,7 @@ resources/js/
 
 ## 已知事项
 
-- 阶段一为「浏览器直连供应商」模式；音频帧不走 Laravel/Reverb，网关抽象已预留中继位。
-- 打断（barge-in）：本地能量 VAD 检测学生开口 → `response.cancel` + 播放队列 flush。
+- 阶段一采用「浏览器 → 本机中继 → 供应商」架构；音频帧不走 Laravel/Reverb。
+- 打断（barge-in）：服务端 `interrupt_response` 自动打断 + 本地 VAD 快速静音。
 - 录音在浏览器侧分片上传（每 ~20s），标签页崩溃最多丢失最后一个间隔。
 - `laravel/pint` 因 GitHub 下载超时从 require-dev 移除，需要时 `composer require laravel/pint --dev` 补回。

@@ -105,6 +105,30 @@ class SessionController extends Controller
         ]);
     }
 
+    /**
+     * 中继初始化（仅服务器中继可调）：校验共享密钥 + 访客归属后，
+     * 返回连上游所需的凭据（含 API Key，绝不下发浏览器）。
+     */
+    public function relayInit(Request $request, ConversationSession $session): JsonResponse
+    {
+        $secret = (string) config('voice.relay.secret');
+
+        abort_unless(
+            $secret !== '' && hash_equals($secret, (string) $request->header('X-Relay-Secret')),
+            Response::HTTP_FORBIDDEN,
+            '中继密钥校验失败。',
+        );
+
+        $this->ensureOwned($session);
+        $this->ensureActive($session);
+
+        $provider = app(RealtimeProviderManager::class)->driver($session->provider);
+
+        return response()->json([
+            'upstream' => $provider->upstreamCredentials($session),
+        ]);
+    }
+
     /** 批量落库字幕/回合（幂等 upsert）。 */
     public function storeTurns(Request $request, ConversationSession $session): JsonResponse
     {

@@ -34,6 +34,11 @@ class DoubaoProvider implements RealtimeVoiceProvider
         throw new RuntimeException('豆包实时语音尚未接入，请参考官方文档实现 DoubaoProvider。');
     }
 
+    public function upstreamCredentials(ConversationSession $session): array
+    {
+        throw new RuntimeException('豆包实时语音尚未接入，请参考官方文档实现 DoubaoProvider。');
+    }
+
     public function buildSystemPrompt(Scenario $scenario, Visitor $visitor): string
     {
         return strtr($scenario->system_prompt, [

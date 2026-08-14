@@ -23,6 +23,13 @@ interface RealtimeVoiceProvider
     /** 为一次会话签发直连凭据。 */
     public function issueSessionToken(ConversationSession $session): SessionCredentials;
 
+    /**
+     * 中继模式：返回供服务器中继连接上游所需的凭据（包含密钥，绝不下发浏览器）。
+     *
+     * @return array{ws_url: string, api_key: string, auth: string}
+     */
+    public function upstreamCredentials(ConversationSession $session): array;
+
     /** 组装会话 system prompt（场景模板 + 访客信息 + 通用护栏）。 */
     public function buildSystemPrompt(Scenario $scenario, Visitor $visitor): string;
 

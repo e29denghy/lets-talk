@@ -26,6 +26,9 @@ class VoiceApiTest extends TestCase
 
         config()->set('voice.provider', 'fake');
         config()->set('voice.providers.fake.driver', FakeVoiceProvider::class);
+        // 关闭中继，让 FakeProvider 直接返回假直连地址（relay 相关用例如需单独开启）
+        config()->set('voice.relay.enabled', false);
+        config()->set('voice.relay.secret', '');
 
         $this->seed(ScenarioSeeder::class);
     }
@@ -196,6 +199,28 @@ class VoiceApiTest extends TestCase
             ->assertOk()
             ->assertJsonPath('credentials.provider', 'fake')
             ->assertJsonPath('credentials.token', 'test-token');
+    }
+
+    public function test_relay_init_requires_shared_secret_and_returns_upstream_credentials(): void
+    {
+        Storage::fake('local');
+
+        config()->set('voice.relay.secret', 'test-relay-secret');
+
+        $this->registerVisitor();
+        $sessionId = $this->beginSession(Scenario::firstOrFail()->id);
+
+        // 无密钥 → 403
+        $this->postJson("/api/voice/sessions/{$sessionId}/relay-init")
+            ->assertStatus(403);
+
+        // 带密钥 → 200 + 上游凭据
+        $this->postJson("/api/voice/sessions/{$sessionId}/relay-init", [], [
+            'X-Relay-Secret' => 'test-relay-secret',
+        ])
+            ->assertOk()
+            ->assertJsonPath('upstream.ws_url', 'wss://fake.example.test/realtime?model=fake-model')
+            ->assertJsonPath('upstream.api_key', 'fake-api-key');
     }
 
     public function test_stale_active_sessions_are_closed_by_command(): void

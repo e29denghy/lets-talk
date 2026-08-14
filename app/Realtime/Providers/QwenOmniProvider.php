@@ -13,12 +13,12 @@ use RuntimeException;
 /**
  * 阿里云百炼 Qwen3-Omni Realtime。
  *
- * 官方文档：https://help.aliyun.com/zh/model-studio/omni/
+ * 官方文档：https://help.aliyun.com/zh/model-studio/omni-realtime-api
  *
- * 注意：浏览器 WebSocket 无法自定义 Authorization Header，因此直连模式下
- * 凭据只能放在 URL query 参数中。内部开发可临时用 API Key（由服务端拼 URL），
- * 生产环境必须切换为阿里云 STS 临时凭证（config: sts_enabled），
- * 或升级为服务器中继模式（阶段二）。
+ * 鉴权实测结论（2026-08）：官方端点只接受 Authorization: Bearer 头，
+ * query 参数鉴权返回 401。浏览器 WebSocket 无法自定义请求头，因此：
+ *  - 中继模式（默认）：浏览器连本机中继，中继带 Bearer 头连上游；
+ *  - 直连模式（relay.enabled=false）：凭据拼 URL query，仅调试用，官方端点会拒绝。
  */
 class QwenOmniProvider implements RealtimeVoiceProvider
 {
@@ -35,21 +35,18 @@ class QwenOmniProvider implements RealtimeVoiceProvider
 
     public function issueSessionToken(ConversationSession $session): SessionCredentials
     {
-        $token = $this->resolveToken();
-
-        $query = Arr::query([
-            'model' => $this->config['model'],
-            $this->config['auth_query_param'] => $token,
-        ]);
-
-        $wsUrl = $this->config['ws_url']
-            .(str_contains($this->config['ws_url'], '?') ? '&' : '?')
-            .$query;
+        // 中继模式：给浏览器的地址是本机中继（凭 Cookie 识别会话）
+        if (config('voice.relay.enabled')) {
+            $wsUrl = rtrim(config('voice.relay.ws_url'), '/').'/ws?session='.$session->id;
+        } else {
+            // 直连调试模式：官方端点拒绝 query 鉴权，仅用于排查
+            $wsUrl = $this->buildUpstreamUrl().'&'.$this->config['auth_query_param'].'='.$this->resolveToken();
+        }
 
         return new SessionCredentials(
             provider: $this->name(),
             wsUrl: $wsUrl,
-            token: $token,
+            token: (string) $session->id,
             expiresAt: now()->addSeconds((int) ($this->config['token_ttl_seconds'] ?? 600))->timestamp,
             extra: [
                 'model' => $this->config['model'],
@@ -76,6 +73,23 @@ class QwenOmniProvider implements RealtimeVoiceProvider
                 ],
             ],
         );
+    }
+
+    public function upstreamCredentials(ConversationSession $session): array
+    {
+        return [
+            'ws_url' => $this->buildUpstreamUrl(),
+            'api_key' => $this->resolveToken(),
+            'auth' => 'header', // Authorization: Bearer <api_key>
+        ];
+    }
+
+    /** 上游连接地址（只带 model 参数，鉴权走请求头）。 */
+    private function buildUpstreamUrl(): string
+    {
+        return $this->config['ws_url']
+            .(str_contains($this->config['ws_url'], '?') ? '&' : '?')
+            .Arr::query(['model' => $this->config['model']]);
     }
 
     public function buildSystemPrompt(Scenario $scenario, Visitor $visitor): string
