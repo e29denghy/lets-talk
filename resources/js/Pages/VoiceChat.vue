@@ -12,6 +12,8 @@ const scenarios = ref<Scenario[]>([]);
 const activeScenarioId = ref<number | null>(null);
 const scrollBox = ref<HTMLElement | null>(null);
 const language = ref<'en' | 'zh'>('en');
+const showUnitText = ref(false);
+const activeScenario = ref<Scenario | null>(null);
 
 const form = reactive({ nickname: '', grade: null as number | null });
 
@@ -112,6 +114,8 @@ async function register(): Promise<void> {
 
 async function onStart(scenario: Scenario): Promise<void> {
     activeScenarioId.value = scenario.id;
+    activeScenario.value = scenario;
+    showUnitText.value = false;
     pageError.value = null;
 
     try {
@@ -302,6 +306,20 @@ onMounted(loadScenarios);
                     <span v-if="state.uploadedStudentBytes + state.uploadedAiBytes > 0">
                         录音已上传 {{ ((state.uploadedStudentBytes + state.uploadedAiBytes) / 1024 / 1024).toFixed(1) }} MB
                     </span>
+                </div>
+            </div>
+
+            <!-- 单元课本文本（可折叠） -->
+            <div v-if="activeScenario?.unit_text" class="border-b border-slate-100">
+                <button
+                    class="flex w-full items-center justify-between px-5 py-2 text-left text-xs text-slate-500 transition hover:bg-slate-50"
+                    @click="showUnitText = !showUnitText"
+                >
+                    <span class="font-medium">📖 单元文本（单词 / 句型 / 故事）</span>
+                    <span class="text-slate-400">{{ showUnitText ? '收起 ▲' : '展开 ▼' }}</span>
+                </button>
+                <div v-if="showUnitText" class="max-h-44 overflow-y-auto border-t border-slate-50 px-5 py-3">
+                    <pre class="whitespace-pre-wrap font-sans text-xs leading-relaxed text-slate-600">{{ activeScenario.unit_text }}</pre>
                 </div>
             </div>
 

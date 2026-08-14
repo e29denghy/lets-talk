@@ -15,6 +15,7 @@ class Scenario extends Model
         'level',
         'description',
         'system_prompt',
+        'unit_text',
         'target_vocab',
         'voice_config',
         'sort_order',

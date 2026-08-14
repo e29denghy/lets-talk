@@ -11,6 +11,7 @@ export interface Scenario {
     level: number;
     description: string | null;
     target_vocab: string[];
+    unit_text?: string | null;
 }
 
 export interface SessionCredentials {

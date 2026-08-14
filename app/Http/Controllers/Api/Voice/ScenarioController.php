@@ -13,7 +13,7 @@ class ScenarioController extends Controller
         $scenarios = Scenario::query()
             ->where('is_active', true)
             ->orderBy('sort_order')
-            ->get(['id', 'name', 'slug', 'level', 'description', 'target_vocab'])
+            ->get(['id', 'name', 'slug', 'level', 'description', 'target_vocab', 'unit_text'])
             ->map(fn (Scenario $scenario) => [
                 'id' => $scenario->id,
                 'name' => $scenario->name,
@@ -21,6 +21,7 @@ class ScenarioController extends Controller
                 'level' => $scenario->level,
                 'description' => $scenario->description,
                 'target_vocab' => $scenario->target_vocab ?? [],
+                'unit_text' => $scenario->unit_text,
             ]);
 
         return response()->json(['scenarios' => $scenarios]);
