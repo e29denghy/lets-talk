@@ -24,6 +24,7 @@ class SessionController extends Controller
     {
         $data = $request->validate([
             'scenario_id' => ['required', 'integer', 'exists:scenarios,id'],
+            'language' => ['nullable', 'in:en,zh'],
         ]);
 
         /** @var Visitor $visitor */
@@ -34,7 +35,7 @@ class SessionController extends Controller
             ->where('is_active', true)
             ->firstOrFail();
 
-        $result = $this->sessions->start($visitor, $scenario);
+        $result = $this->sessions->start($visitor, $scenario, $data['language'] ?? 'en');
 
         $quota = VoiceQuota::where('visitor_id', $visitor->id)
             ->where('date', today()->toDateString())

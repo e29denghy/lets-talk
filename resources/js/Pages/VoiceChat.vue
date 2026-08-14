@@ -11,6 +11,7 @@ const pageError = ref<string | null>(null);
 const scenarios = ref<Scenario[]>([]);
 const activeScenarioId = ref<number | null>(null);
 const scrollBox = ref<HTMLElement | null>(null);
+const language = ref<'en' | 'zh'>('en');
 
 const form = reactive({ nickname: '', grade: null as number | null });
 
@@ -114,7 +115,12 @@ async function onStart(scenario: Scenario): Promise<void> {
     pageError.value = null;
 
     try {
-        await start(scenario.id, form.nickname.trim() || undefined, form.grade ?? undefined);
+        await start(
+            scenario.id,
+            language.value,
+            form.nickname.trim() || undefined,
+            form.grade ?? undefined,
+        );
         await scrollToBottom();
     } catch {
         // 错误已在 state.error 中
@@ -159,17 +165,41 @@ onMounted(loadScenarios);
                 </h1>
                 <p class="mt-1 text-sm text-slate-500">选一个场景，开口和 AI 老师聊起来吧</p>
             </div>
-            <div v-if="state.quota" class="text-right">
-                <p class="text-xs text-slate-500">今日已用</p>
-                <p class="text-sm font-semibold text-slate-700">
-                    {{ fmtDuration(state.quota.used_seconds) }} / {{ fmtDuration(state.quota.limit_seconds) }}
-                </p>
-                <div class="mt-1 h-1.5 w-28 overflow-hidden rounded-full bg-slate-200">
-                    <div
-                        class="h-full rounded-full transition-all"
-                        :class="quotaPercent >= 90 ? 'bg-red-400' : 'bg-emerald-400'"
-                        :style="{ width: `${quotaPercent}%` }"
-                    />
+            <div class="flex items-center gap-3">
+                <!-- 对话语言切换 -->
+                <div class="flex items-center gap-1 rounded-xl bg-slate-100 p-1">
+                    <button
+                        class="rounded-lg px-3 py-1 text-xs font-medium transition"
+                        :class="language === 'en' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500'"
+                        :disabled="isInSession"
+                        title="英文对话模式"
+                        @click="language = 'en'"
+                    >
+                        EN
+                    </button>
+                    <button
+                        class="rounded-lg px-3 py-1 text-xs font-medium transition"
+                        :class="language === 'zh' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500'"
+                        :disabled="isInSession"
+                        title="中文对话模式"
+                        @click="language = 'zh'"
+                    >
+                        中文
+                    </button>
+                </div>
+
+                <div v-if="state.quota" class="text-right">
+                    <p class="text-xs text-slate-500">今日已用</p>
+                    <p class="text-sm font-semibold text-slate-700">
+                        {{ fmtDuration(state.quota.used_seconds) }} / {{ fmtDuration(state.quota.limit_seconds) }}
+                    </p>
+                    <div class="mt-1 h-1.5 w-28 overflow-hidden rounded-full bg-slate-200">
+                        <div
+                            class="h-full rounded-full transition-all"
+                            :class="quotaPercent >= 90 ? 'bg-red-400' : 'bg-emerald-400'"
+                            :style="{ width: `${quotaPercent}%` }"
+                        />
+                    </div>
                 </div>
             </div>
         </header>
@@ -256,12 +286,17 @@ onMounted(loadScenarios);
             class="flex flex-1 flex-col rounded-2xl border border-slate-200 bg-white shadow-sm"
         >
             <div class="flex items-center justify-between border-b border-slate-100 px-5 py-3">
-                <span
-                    class="rounded-full px-3 py-1 text-xs font-medium"
-                    :class="statusBadgeClass"
-                >
-                    {{ statusText }}
-                </span>
+                <div class="flex items-center gap-2">
+                    <span
+                        class="rounded-full px-3 py-1 text-xs font-medium"
+                        :class="statusBadgeClass"
+                    >
+                        {{ statusText }}
+                    </span>
+                    <span v-if="isInSession" class="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] text-slate-500">
+                        {{ language === 'zh' ? '中文对话' : 'English 对话' }}
+                    </span>
+                </div>
                 <div class="flex items-center gap-3 text-xs text-slate-400">
                     <span v-if="state.sessionId">时长 {{ fmtDuration(state.durationS) }}</span>
                     <span v-if="state.uploadedStudentBytes + state.uploadedAiBytes > 0">

@@ -30,8 +30,8 @@ interface RealtimeVoiceProvider
      */
     public function upstreamCredentials(ConversationSession $session): array;
 
-    /** 组装会话 system prompt（场景模板 + 访客信息 + 通用护栏）。 */
-    public function buildSystemPrompt(Scenario $scenario, Visitor $visitor): string;
+    /** 组装会话 system prompt（场景模板 + 访客信息 + 语言护栏）。 */
+    public function buildSystemPrompt(Scenario $scenario, Visitor $visitor, string $language = 'en'): string;
 
     /**
      * 供应商 WS 事件 → 统一事件结构。

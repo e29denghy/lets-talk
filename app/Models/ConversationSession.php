@@ -21,6 +21,7 @@ class ConversationSession extends Model
         'user_id',
         'scenario_id',
         'provider',
+        'language',
         'status',
         'duration_s',
         'turn_count',

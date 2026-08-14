@@ -201,6 +201,25 @@ class VoiceApiTest extends TestCase
             ->assertJsonPath('credentials.token', 'test-token');
     }
 
+    public function test_session_language_is_stored_and_used_in_prompt(): void
+    {
+        Storage::fake('local');
+
+        $this->registerVisitor();
+
+        $scenario = Scenario::firstOrFail();
+
+        $this->postJson('/api/voice/sessions', ['scenario_id' => $scenario->id, 'language' => 'zh'])
+            ->assertCreated()
+            ->assertJsonPath('system_prompt', fn ($prompt) => str_contains($prompt, 'PROMPT(zh)'));
+
+        $this->assertDatabaseHas('conversation_sessions', ['language' => 'zh']);
+
+        // 非法语言值 → 422
+        $this->postJson('/api/voice/sessions', ['scenario_id' => $scenario->id, 'language' => 'fr'])
+            ->assertStatus(422);
+    }
+
     public function test_relay_init_requires_shared_secret_and_returns_upstream_credentials(): void
     {
         Storage::fake('local');

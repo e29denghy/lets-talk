@@ -31,12 +31,13 @@ class VoiceSessionService
      *
      * @return array{session: ConversationSession, credentials: array, system_prompt: string, voice_config: array}
      */
-    public function start(Visitor $visitor, Scenario $scenario): array
+    public function start(Visitor $visitor, Scenario $scenario, string $language = 'en'): array
     {
         $session = ConversationSession::create([
             'visitor_id' => $visitor->id,
             'scenario_id' => $scenario->id,
             'provider' => config('voice.provider'),
+            'language' => in_array($language, ['en', 'zh'], true) ? $language : 'en',
             'status' => ConversationSession::STATUS_ACTIVE,
             'started_at' => now(),
         ]);
@@ -56,7 +57,7 @@ class VoiceSessionService
         return [
             'session' => $session,
             'credentials' => $credentials->toArray(),
-            'system_prompt' => $provider->buildSystemPrompt($scenario, $visitor),
+            'system_prompt' => $provider->buildSystemPrompt($scenario, $visitor, $session->language),
             'voice_config' => $scenario->voice_config ?? [],
         ];
     }

@@ -74,11 +74,11 @@ export const api = {
 
     scenarios: () => request<{ scenarios: Scenario[] }>('/api/voice/scenarios'),
 
-    startSession: (scenarioId: number) =>
+    startSession: (scenarioId: number, language: 'en' | 'zh' = 'en') =>
         request<SessionStartResponse>('/api/voice/sessions', {
             method: 'POST',
             headers: JSON_HEADERS,
-            body: JSON.stringify({ scenario_id: scenarioId }),
+            body: JSON.stringify({ scenario_id: scenarioId, language }),
         }),
 
     uploadChunk: (sessionId: number, channel: 'student' | 'ai', seq: number, blob: Blob) =>

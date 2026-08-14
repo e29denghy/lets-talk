@@ -1,7 +1,7 @@
 import { reactive, readonly } from 'vue';
 import { MicRecorder } from '../lib/audio/recorder';
 import { PcmPlayer } from '../lib/audio/player';
-import { EnergyVad } from '../lib/audio/vad';
+import { rmsEnergy } from '../lib/audio/vad';
 import { ChunkUploader } from '../lib/audio/uploader';
 import * as qwen from '../lib/providers/qwenOmniClient';
 import { api, type SessionStartResponse, type TurnInput } from '../lib/api';
@@ -45,7 +45,6 @@ const state = reactive<VoiceState>({
 
 let recorder: MicRecorder | null = null;
 let player: PcmPlayer | null = null;
-let vad: EnergyVad | null = null;
 let uploader: ChunkUploader | null = null;
 let socket: WebSocket | null = null;
 
@@ -65,13 +64,22 @@ let sessionStartedAt = 0;
 
 const VISITOR_COOKIE = 'lets_talk_visitor';
 
+// AI 说话期间的插话判定阈值：麦克风帧能量超过它才算「学生开口」。
+// 低于该值的帧（包括扬声器回声）在 AI 说话期间不会发给服务端，防止回声自激循环。
+const BARGE_IN_RMS = 0.08;
+
 async function ensureVisitor(nickname?: string, grade?: number): Promise<void> {
     if (document.cookie.includes(`${VISITOR_COOKIE}=`)) return;
     await api.registerVisitor({ nickname, grade });
 }
 
 /** 开始一次语音会话（必须在用户点击手势中调用）。 */
-async function start(scenarioId: number, nickname?: string, grade?: number): Promise<void> {
+async function start(
+    scenarioId: number,
+    language: 'en' | 'zh' = 'en',
+    nickname?: string,
+    grade?: number,
+): Promise<void> {
     if (state.status === 'connecting' || state.status === 'listening' || state.status === 'thinking' || state.status === 'speaking') {
         return;
     }
@@ -82,7 +90,7 @@ async function start(scenarioId: number, nickname?: string, grade?: number): Pro
     try {
         await ensureVisitor(nickname, grade);
 
-        const result = await api.startSession(scenarioId);
+        const result = await api.startSession(scenarioId, language);
         activeResult = result;
         state.sessionId = result.session.id;
         state.quota = result.quota;
@@ -139,25 +147,34 @@ function prepareSessionUpdate(result: SessionStartResponse): void {
 }
 
 /**
- * 学生 PCM 帧处理：全量推流 + 录音（话轮由服务端 server_vad 判断）。
- * 本地 VAD 只用于「AI 说话时学生插嘴」的快速静音（服务端会真正打断生成）。
+ * 学生 PCM 帧处理：录音始终进行；推流分两种状态——
+ *  1. AI 说话期间：只把「疑似学生插话」的响亮帧发给服务端（触发服务端打断），
+ *     其余帧不上行——这是防回声自激的关键（否则 AI 的声音被麦克风拾取后
+ *     会被服务端 VAD 当成学生在说话，形成无限循环）。
+ *  2. 平时：全量推流，话轮由服务端 server_vad 判断。
  */
 function onStudentPcm(pcm: Int16Array): void {
     if (!socket || socket.readyState !== WebSocket.OPEN) return;
 
     uploader?.append('student', pcm);
-    socket.send(qwen.appendAudio(pcm));
 
-    vad ??= new EnergyVad({ threshold: 0.02, hangoverMs: 400 });
+    if (aiSpeaking) {
+        if (rmsEnergy(pcm) >= BARGE_IN_RMS) {
+            // 学生开口插话：本地立即静音，恢复推流让服务端完成打断
+            player?.flush();
+            suppressAiAudio = true;
+            aiSpeaking = false;
 
-    if (vad.process(pcm) && aiSpeaking) {
-        player?.flush();
-        aiSpeaking = false;
+            if (state.status === 'speaking') {
+                state.status = 'listening';
+            }
 
-        if (state.status === 'speaking' || state.status === 'thinking') {
-            state.status = 'listening';
+            socket.send(qwen.appendAudio(pcm));
         }
+        return;
     }
+
+    socket.send(qwen.appendAudio(pcm));
 }
 
 /** 手动打断（头像点击）：仅在 AI 生成中发送 cancel，避免「无响应可取消」的 error 事件。 */
@@ -381,8 +398,6 @@ async function teardown(): Promise<void> {
 
     player?.close();
     player = null;
-
-    vad = null;
 
     try {
         socket?.close(1000, 'session done');

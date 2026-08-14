@@ -9,6 +9,7 @@ const props = defineProps<{
         grade: number | null;
         scenario: string;
         provider: string;
+        language: string;
         status: string;
         duration_s: number;
         turn_count: number;
@@ -55,7 +56,10 @@ function pauseBoth(): void {
             </div>
             <div>
                 <p class="text-xs text-slate-400">场景 / 服务商</p>
-                <p class="font-medium text-slate-700">{{ props.session.scenario }} / {{ props.session.provider }}</p>
+                <p class="font-medium text-slate-700">
+                    {{ props.session.scenario }} / {{ props.session.provider }}
+                    <span class="text-xs text-slate-400">({{ props.session.language === 'zh' ? '中文' : '英文' }})</span>
+                </p>
             </div>
             <div>
                 <p class="text-xs text-slate-400">时长 / 回合</p>

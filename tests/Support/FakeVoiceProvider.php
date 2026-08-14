@@ -51,9 +51,9 @@ class FakeVoiceProvider implements RealtimeVoiceProvider
         ];
     }
 
-    public function buildSystemPrompt(Scenario $scenario, Visitor $visitor): string
+    public function buildSystemPrompt(Scenario $scenario, Visitor $visitor, string $language = 'en'): string
     {
-        return strtr($scenario->system_prompt, [
+        return 'PROMPT('.$language.') '.strtr($scenario->system_prompt, [
             '{nickname}' => $visitor->nickname ?: 'friend',
             '{grade}' => $visitor->grade ? "Grade {$visitor->grade}" : 'a primary school student',
         ]);

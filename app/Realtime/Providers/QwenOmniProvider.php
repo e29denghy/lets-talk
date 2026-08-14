@@ -92,14 +92,14 @@ class QwenOmniProvider implements RealtimeVoiceProvider
             .Arr::query(['model' => $this->config['model']]);
     }
 
-    public function buildSystemPrompt(Scenario $scenario, Visitor $visitor): string
+    public function buildSystemPrompt(Scenario $scenario, Visitor $visitor, string $language = 'en'): string
     {
         $prompt = strtr($scenario->system_prompt, [
             '{nickname}' => $visitor->nickname ?: 'friend',
             '{grade}' => $visitor->grade ? "Grade {$visitor->grade}" : 'a primary school student',
         ]);
 
-        $guardrails = config('voice.guardrails', []);
+        $guardrails = config("voice.guardrails.{$language}", config('voice.guardrails.en', []));
 
         if ($guardrails !== []) {
             $prompt .= "\n\nRules:\n- ".implode("\n- ", $guardrails);

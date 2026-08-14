@@ -8,6 +8,18 @@ export interface VadOptions {
     hangoverMs?: number;
 }
 
+/** 计算 16-bit PCM 的 RMS 能量（0~1）。 */
+export function rmsEnergy(pcm: Int16Array): number {
+    let sum = 0;
+
+    for (let i = 0; i < pcm.length; i++) {
+        const s = pcm[i] / 32768;
+        sum += s * s;
+    }
+
+    return Math.sqrt(sum / Math.max(1, pcm.length));
+}
+
 export class EnergyVad {
     private readonly threshold: number;
     private readonly hangoverMs: number;
@@ -21,7 +33,7 @@ export class EnergyVad {
 
     /** 输入 16kHz mono PCM，返回该帧是否属于「说话」状态。 */
     process(pcm: Int16Array, nowMs: number = performance.now()): boolean {
-        const energy = EnergyVad.rms(pcm);
+        const energy = rmsEnergy(pcm);
 
         if (energy >= this.threshold) {
             this.lastActiveAt = nowMs;
@@ -38,16 +50,5 @@ export class EnergyVad {
 
     get isActive(): boolean {
         return this.active;
-    }
-
-    private static rms(pcm: Int16Array): number {
-        let sum = 0;
-
-        for (let i = 0; i < pcm.length; i++) {
-            const s = pcm[i] / 32768;
-            sum += s * s;
-        }
-
-        return Math.sqrt(sum / Math.max(1, pcm.length));
     }
 }
