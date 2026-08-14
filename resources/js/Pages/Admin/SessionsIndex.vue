@@ -41,16 +41,16 @@ function finalizeSession(id: number): void {
 <template>
     <div class="mx-auto max-w-5xl px-4 py-8">
         <div class="mb-6 flex items-center justify-between">
-            <h1 class="text-xl font-bold text-slate-800">会话记录</h1>
+            <h1 class="text-xl font-bold text-ink-700">会话记录</h1>
             <div class="flex gap-4">
-                <Link href="/admin/scenarios" class="text-sm text-indigo-600 hover:underline">场景管理 →</Link>
-                <Link href="/admin/visitors" class="text-sm text-indigo-600 hover:underline">访客列表 →</Link>
+                <Link href="/admin/scenarios" class="text-sm text-azure-600 hover:underline">场景管理 →</Link>
+                <Link href="/admin/visitors" class="text-sm text-azure-600 hover:underline">访客列表 →</Link>
             </div>
         </div>
 
-        <div class="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+        <div class="overflow-hidden rounded-xl border border-cream-200 bg-white shadow-soft">
             <table class="w-full text-left text-sm">
-                <thead class="bg-slate-50 text-xs uppercase text-slate-500">
+                <thead class="bg-cream-100 text-xs uppercase text-ink-400">
                     <tr>
                         <th class="px-4 py-3">ID</th>
                         <th class="px-4 py-3">访客</th>
@@ -63,18 +63,18 @@ function finalizeSession(id: number): void {
                         <th class="px-4 py-3"></th>
                     </tr>
                 </thead>
-                <tbody class="divide-y divide-slate-100">
-                    <tr v-for="session in sessions" :key="session.id" class="hover:bg-slate-50">
+                <tbody class="divide-y divide-cream-100">
+                    <tr v-for="session in sessions" :key="session.id" class="hover:bg-cream-100">
                         <td class="px-4 py-3 font-mono text-xs">{{ session.id }}</td>
                         <td class="px-4 py-3">
                             {{ session.visitor }}
-                            <span v-if="session.grade" class="ml-1 text-xs text-slate-400">{{ session.grade }}年级</span>
+                            <span v-if="session.grade" class="ml-1 text-xs text-ink-300">{{ session.grade }}年级</span>
                         </td>
                         <td class="px-4 py-3">{{ session.scenario }}</td>
                         <td class="px-4 py-3">
                             <span
                                 class="rounded-full px-2 py-0.5 text-xs"
-                                :class="session.status === 'ended' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'"
+                                :class="session.status === 'ended' ? 'bg-mint-100 text-mint-700' : 'bg-sun-100 text-sun-700'"
                             >
                                 {{ statusLabel[session.status] ?? session.status }}
                             </span>
@@ -82,11 +82,11 @@ function finalizeSession(id: number): void {
                         <td class="px-4 py-3">{{ fmtDuration(session.duration_s) }}</td>
                         <td class="px-4 py-3">{{ session.turn_count }}</td>
                         <td class="px-4 py-3 font-mono text-xs">{{ fmtCost(session.cost_micro) }}</td>
-                        <td class="px-4 py-3 text-xs text-slate-500">{{ session.started_at }}</td>
+                        <td class="px-4 py-3 text-xs text-ink-400">{{ session.started_at }}</td>
                         <td class="px-4 py-3 text-right">
                             <span v-if="session.status === 'active'">
                                 <button
-                                    class="mr-3 rounded-lg bg-rose-100 px-2.5 py-1 text-xs text-rose-700 hover:bg-rose-200"
+                                    class="mr-3 rounded-lg bg-coral-100 px-2.5 py-1 text-xs text-coral-700 hover:bg-coral-200"
                                     @click="finalizeSession(session.id)"
                                 >
                                     强制结束
@@ -94,14 +94,14 @@ function finalizeSession(id: number): void {
                             </span>
                             <Link
                                 :href="`/admin/sessions/${session.id}`"
-                                class="text-indigo-600 hover:underline"
+                                class="text-azure-600 hover:underline"
                             >
                                 查看 →
                             </Link>
                         </td>
                     </tr>
                     <tr v-if="sessions.length === 0">
-                        <td colspan="9" class="px-4 py-8 text-center text-slate-400">还没有会话记录</td>
+                        <td colspan="9" class="px-4 py-8 text-center text-ink-300">还没有会话记录</td>
                     </tr>
                 </tbody>
             </table>

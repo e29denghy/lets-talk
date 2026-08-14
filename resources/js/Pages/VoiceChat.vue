@@ -1,96 +1,67 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue';
+import { computed, onMounted, reactive, ref } from 'vue';
 import { api, ApiError, type Scenario } from '../lib/api';
 import { useVoiceChat } from '../composables/useVoiceChat';
+import WelcomeHeader from '../Components/voice/WelcomeHeader.vue';
+import VisitorOnboarding from '../Components/voice/VisitorOnboarding.vue';
+import ScenarioGallery from '../Components/voice/ScenarioGallery.vue';
+import SessionTopBar from '../Components/voice/SessionTopBar.vue';
+import ChatStage from '../Components/voice/ChatStage.vue';
+import SubtitleConsole from '../Components/voice/SubtitleConsole.vue';
+import ChatControls from '../Components/voice/ChatControls.vue';
+import SessionEndCard from '../Components/voice/SessionEndCard.vue';
 
 const { state, start, stop, interrupt, dismiss } = useVoiceChat();
 
+const NICKNAME_KEY = 'lets_talk_nickname';
+
 const loading = ref(true);
 const needRegister = ref(false);
-const pageError = ref<string | null>(null);
+const homeError = ref<string | null>(null);
 const scenarios = ref<Scenario[]>([]);
 const activeScenarioId = ref<number | null>(null);
-const scrollBox = ref<HTMLElement | null>(null);
-const language = ref<'en' | 'zh'>('en');
-const showUnitText = ref(false);
 const activeScenario = ref<Scenario | null>(null);
+const language = ref<'en' | 'zh'>('en');
+// 首页配额（会话开始后 state.quota 也会更新）
+const homeQuota = ref<{ used_seconds: number; limit_seconds: number } | null>(null);
 
+// 昵称本地记忆（仅用于问候展示；访客身份仍以后端签名 Cookie 为准）
+const nickname = ref<string | null>(localStorage.getItem(NICKNAME_KEY));
 const form = reactive({ nickname: '', grade: null as number | null });
-
-const statusText = computed(() => {
-    const map: Record<string, string> = {
-        idle: '准备开始',
-        connecting: '正在连接语音服务…',
-        listening: '我在听，请开口说英语吧',
-        thinking: '让我想一想…',
-        speaking: 'AI 正在说话（开口即可打断）',
-        ended: '本次练习已结束',
-        error: '出错了',
-    };
-    return map[state.status] ?? state.status;
-});
-
-const statusBadgeClass = computed(() => {
-    const map: Record<string, string> = {
-        idle: 'bg-slate-100 text-slate-600',
-        connecting: 'bg-amber-100 text-amber-700',
-        listening: 'bg-emerald-100 text-emerald-700',
-        thinking: 'bg-indigo-100 text-indigo-700',
-        speaking: 'bg-indigo-100 text-indigo-700',
-        ended: 'bg-slate-200 text-slate-600',
-        error: 'bg-red-100 text-red-700',
-    };
-    return map[state.status] ?? map.idle;
-});
-
-const avatarEmoji = computed(() => {
-    switch (state.status) {
-        case 'listening':
-            return '🎧';
-        case 'thinking':
-            return '🤔';
-        case 'speaking':
-            return '🤖';
-        case 'ended':
-            return '⭐';
-        case 'error':
-            return '⚠️';
-        default:
-            return '🎙️';
-    }
-});
-
-const avatarPulse = computed(
-    () => state.status === 'listening' || state.status === 'speaking' || state.status === 'thinking',
-);
 
 const isInSession = computed(() =>
     ['connecting', 'listening', 'thinking', 'speaking'].includes(state.status),
 );
 
-const quotaPercent = computed(() => {
-    if (!state.quota || state.quota.limit_seconds === 0) return 0;
-    return Math.min(100, Math.round((state.quota.used_seconds / state.quota.limit_seconds) * 100));
+/**
+ * 三屏：onboarding 首访登记 → home 场景画廊 → session 会话舞台 → ended 结束反馈。
+ * 会话建立失败（sessionId 为空）时留在 home 屏并显示错误横幅。
+ */
+const screen = computed(() => {
+    if (needRegister.value) return 'onboarding';
+    if (isInSession.value || (state.status === 'error' && state.sessionId !== null)) return 'session';
+    if (state.status === 'ended') return 'ended';
+    return 'home';
 });
 
-function fmtDuration(totalSeconds: number): string {
-    const m = Math.floor(totalSeconds / 60);
-    const s = totalSeconds % 60;
-    return `${m}:${String(s).padStart(2, '0')}`;
-}
+const studentTurns = computed(
+    () => state.subtitles.filter((s) => s.speaker === 'student').length,
+);
 
 async function loadScenarios(): Promise<void> {
     loading.value = true;
-    pageError.value = null;
+    homeError.value = null;
 
     try {
-        scenarios.value = (await api.scenarios()).scenarios;
+        const data = await api.scenarios();
+        scenarios.value = data.scenarios;
+        homeQuota.value = data.quota ?? null;
         needRegister.value = false;
     } catch (error) {
         if (error instanceof ApiError && error.status === 401) {
             needRegister.value = true;
         } else {
-            pageError.value = error instanceof Error ? error.message : String(error);
+            homeError.value = error instanceof Error ? error.message : String(error);
         }
     } finally {
         loading.value = false;
@@ -98,314 +69,176 @@ async function loadScenarios(): Promise<void> {
 }
 
 async function register(): Promise<void> {
-    pageError.value = null;
+    homeError.value = null;
 
     try {
         await api.registerVisitor({
             nickname: form.nickname.trim() || undefined,
             grade: form.grade ?? undefined,
         });
+
+        if (form.nickname.trim()) {
+            nickname.value = form.nickname.trim();
+            localStorage.setItem(NICKNAME_KEY, nickname.value);
+        }
+
         needRegister.value = false;
         await loadScenarios();
     } catch (error) {
-        pageError.value = error instanceof Error ? error.message : String(error);
+        homeError.value = error instanceof Error ? error.message : String(error);
     }
 }
 
 async function onStart(scenario: Scenario): Promise<void> {
     activeScenarioId.value = scenario.id;
     activeScenario.value = scenario;
-    showUnitText.value = false;
-    pageError.value = null;
+    homeError.value = null;
 
     try {
         await start(
             scenario.id,
             language.value,
-            form.nickname.trim() || undefined,
+            nickname.value ?? undefined,
             form.grade ?? undefined,
         );
-        await scrollToBottom();
     } catch {
-        // 错误已在 state.error 中
+        // 错误已在 state.error 中，home 屏会显示横幅
     }
 }
 
 async function onStop(): Promise<void> {
     await stop();
+    // 结束后的配额回写首页展示
+    if (state.quota) homeQuota.value = state.quota;
 }
 
-async function onAvatarTap(): Promise<void> {
-    if (state.status === 'speaking' || state.status === 'thinking') {
-        interrupt();
-        return;
-    }
-
-    await nextTick();
-}
-
-watch(
-    () => state.subtitles.length,
-    () => void scrollToBottom(),
-);
-
-async function scrollToBottom(): Promise<void> {
-    await nextTick();
-    if (scrollBox.value) {
-        scrollBox.value.scrollTop = scrollBox.value.scrollHeight;
-    }
+function onDismiss(): void {
+    void dismiss();
 }
 
 onMounted(loadScenarios);
 </script>
 
 <template>
-    <div class="mx-auto flex min-h-screen max-w-3xl flex-col px-4 py-6">
-        <!-- 顶栏 -->
-        <header class="mb-6 flex items-center justify-between">
-            <div>
-                <h1 class="text-2xl font-bold text-slate-800">
-                    Let's Talk <span class="text-base font-normal text-slate-500">· 英语对话练习</span>
-                </h1>
-                <p class="mt-1 text-sm text-slate-500">选一个场景，开口和 AI 老师聊起来吧</p>
-            </div>
-            <div class="flex items-center gap-3">
-                <!-- 对话语言切换 -->
-                <div class="flex items-center gap-1 rounded-xl bg-slate-100 p-1">
+    <div class="relative min-h-screen overflow-hidden bg-cream-100 font-sans text-ink-700 antialiased">
+        <!-- 漂浮装饰（纯氛围，屏幕阅读器忽略） -->
+        <div class="pointer-events-none absolute inset-0" aria-hidden="true">
+            <span class="animate-float absolute -left-6 top-20 text-6xl opacity-40">☁️</span>
+            <span class="animate-float absolute right-8 top-36 text-5xl opacity-40" style="animation-delay: 1.2s">⭐</span>
+            <span class="animate-float absolute bottom-24 left-8 text-5xl opacity-30" style="animation-delay: 2s">🎈</span>
+            <span class="animate-float absolute -right-3 bottom-10 text-6xl opacity-30" style="animation-delay: 0.6s">🌈</span>
+        </div>
+
+        <div class="relative mx-auto flex min-h-screen w-full max-w-5xl flex-col px-4 py-5 sm:py-6">
+            <!-- ═══ 屏 A：首页（问候 + 登记/画廊） ═══ -->
+            <template v-if="screen === 'home' || screen === 'onboarding'">
+                <WelcomeHeader
+                    :nickname="nickname"
+                    :language="language"
+                    :quota="homeQuota ?? state.quota"
+                    @update-language="language = $event"
+                />
+
+                <VisitorOnboarding v-if="screen === 'onboarding'" :error="homeError" @submit="register" />
+                <ScenarioGallery
+                    v-else
+                    :scenarios="scenarios"
+                    :loading="loading"
+                    :error="homeError"
+                    :active-id="activeScenarioId"
+                    @select="onStart"
+                />
+
+                <!-- 会话建立失败 / 配额超限等错误横幅 -->
+                <div
+                    v-if="state.error && screen === 'home'"
+                    class="animate-fade-up mx-auto mt-6 flex max-w-xl items-center justify-between gap-4 rounded-2xl border-2 border-coral-200 bg-coral-100 px-5 py-4"
+                    role="alert"
+                >
+                    <p class="text-sm font-bold text-coral-700">⚠️ {{ state.error }}</p>
                     <button
-                        class="rounded-lg px-3 py-1 text-xs font-medium transition"
-                        :class="language === 'en' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500'"
-                        :disabled="isInSession"
-                        title="英文对话模式"
-                        @click="language = 'en'"
+                        type="button"
+                        class="shrink-0 rounded-full bg-white px-4 py-2 text-xs font-extrabold text-coral-600 shadow-soft transition active:scale-95"
+                        @click="onDismiss"
                     >
-                        EN
-                    </button>
-                    <button
-                        class="rounded-lg px-3 py-1 text-xs font-medium transition"
-                        :class="language === 'zh' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500'"
-                        :disabled="isInSession"
-                        title="中文对话模式"
-                        @click="language = 'zh'"
-                    >
-                        中文
+                        知道了
                     </button>
                 </div>
+            </template>
 
-                <div v-if="state.quota" class="text-right">
-                    <p class="text-xs text-slate-500">今日已用</p>
-                    <p class="text-sm font-semibold text-slate-700">
-                        {{ fmtDuration(state.quota.used_seconds) }} / {{ fmtDuration(state.quota.limit_seconds) }}
-                    </p>
-                    <div class="mt-1 h-1.5 w-28 overflow-hidden rounded-full bg-slate-200">
-                        <div
-                            class="h-full rounded-full transition-all"
-                            :class="quotaPercent >= 90 ? 'bg-red-400' : 'bg-emerald-400'"
-                            :style="{ width: `${quotaPercent}%` }"
+            <!-- ═══ 屏 B：会话舞台 ═══ -->
+            <template v-else-if="screen === 'session'">
+                <SessionTopBar
+                    :scenario="activeScenario"
+                    :duration-s="state.durationS"
+                    :quota="state.quota"
+                    :status="state.status"
+                    @end="onStop"
+                />
+
+                <div class="mt-4 grid flex-1 gap-4 lg:grid-cols-[minmax(0,5fr)_minmax(0,6fr)]">
+                    <ChatStage
+                        :status="state.status"
+                        :mic-level="state.micLevel"
+                        :duration-s="state.durationS"
+                        :error="state.error"
+                    />
+
+                    <div class="flex h-[45vh] min-h-0 lg:h-[calc(100vh-16rem)]">
+                        <SubtitleConsole
+                            :subtitles="state.subtitles"
+                            :status="state.status"
+                            :unit-text="activeScenario?.unit_text ?? null"
                         />
                     </div>
                 </div>
-            </div>
-        </header>
 
-        <!-- 首次访客登记 -->
-        <section v-if="needRegister" class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-            <h2 class="text-lg font-semibold text-slate-800">第一次来？先认识一下</h2>
-            <p class="mt-1 text-sm text-slate-500">不需要注册账号，昵称和年级可选填，方便 AI 老师按你的水平来聊。</p>
-
-            <div class="mt-4 flex flex-wrap items-end gap-4">
-                <label class="block">
-                    <span class="mb-1 block text-xs text-slate-500">昵称（可选）</span>
-                    <input
-                        v-model="form.nickname"
-                        type="text"
-                        maxlength="50"
-                        placeholder="例如：小明"
-                        class="w-44 rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-indigo-400 focus:outline-none"
-                    />
-                </label>
-
-                <label class="block">
-                    <span class="mb-1 block text-xs text-slate-500">年级（可选）</span>
-                    <select
-                        v-model="form.grade"
-                        class="w-32 rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-indigo-400 focus:outline-none"
-                    >
-                        <option :value="null">不选</option>
-                        <option v-for="g in 6" :key="g" :value="g">{{ g }} 年级</option>
-                    </select>
-                </label>
-
-                <button
-                    class="rounded-lg bg-indigo-500 px-5 py-2 text-sm font-medium text-white transition hover:bg-indigo-600"
-                    @click="register"
-                >
-                    开始练习
-                </button>
-            </div>
-
-            <p v-if="pageError" class="mt-3 text-sm text-red-600">{{ pageError }}</p>
-        </section>
-
-        <!-- 场景选择 -->
-        <section v-else-if="!isInSession && state.status !== 'ended'" class="mb-6">
-            <div v-if="loading" class="text-center text-sm text-slate-400">加载场景中…</div>
-
-            <div v-else class="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                <button
-                    v-for="scenario in scenarios"
-                    :key="scenario.id"
-                    class="group rounded-2xl border bg-white p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-indigo-300 hover:shadow-md"
-                    :class="activeScenarioId === scenario.id ? 'border-indigo-400 ring-2 ring-indigo-100' : 'border-slate-200'"
-                    @click="onStart(scenario)"
-                >
-                    <div class="flex items-center justify-between">
-                        <span class="text-lg font-semibold text-slate-800">{{ scenario.name }}</span>
-                        <span
-                            class="rounded-full px-2 py-0.5 text-xs"
-                            :class="scenario.level === 1 ? 'bg-emerald-100 text-emerald-700' : scenario.level === 2 ? 'bg-amber-100 text-amber-700' : 'bg-rose-100 text-rose-700'"
-                        >
-                            L{{ scenario.level }}
-                        </span>
-                    </div>
-                    <p class="mt-1 text-xs leading-relaxed text-slate-500">{{ scenario.description }}</p>
-                    <div class="mt-2 flex flex-wrap gap-1">
-                        <span
-                            v-for="word in scenario.target_vocab.slice(0, 4)"
-                            :key="word"
-                            class="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-500"
-                        >
-                            {{ word }}
-                        </span>
-                    </div>
-                </button>
-            </div>
-
-            <p v-if="pageError" class="mt-3 text-sm text-red-600">{{ pageError }}</p>
-        </section>
-
-        <!-- 对话面板 -->
-        <section
-            v-else
-            class="flex flex-1 flex-col rounded-2xl border border-slate-200 bg-white shadow-sm"
-        >
-            <div class="flex items-center justify-between border-b border-slate-100 px-5 py-3">
-                <div class="flex items-center gap-2">
-                    <span
-                        class="rounded-full px-3 py-1 text-xs font-medium"
-                        :class="statusBadgeClass"
-                    >
-                        {{ statusText }}
-                    </span>
-                    <span v-if="isInSession" class="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] text-slate-500">
-                        {{ language === 'zh' ? '中文对话' : 'English 对话' }}
-                    </span>
-                </div>
-                <div class="flex items-center gap-3 text-xs text-slate-400">
-                    <span v-if="state.sessionId">时长 {{ fmtDuration(state.durationS) }}</span>
-                    <span v-if="state.uploadedStudentBytes + state.uploadedAiBytes > 0">
-                        录音已上传 {{ ((state.uploadedStudentBytes + state.uploadedAiBytes) / 1024 / 1024).toFixed(1) }} MB
-                    </span>
-                </div>
-            </div>
-
-            <!-- 单元课本文本（可折叠） -->
-            <div v-if="activeScenario?.unit_text" class="border-b border-slate-100">
-                <button
-                    class="flex w-full items-center justify-between px-5 py-2 text-left text-xs text-slate-500 transition hover:bg-slate-50"
-                    @click="showUnitText = !showUnitText"
-                >
-                    <span class="font-medium">📖 单元文本（单词 / 句型 / 故事）</span>
-                    <span class="text-slate-400">{{ showUnitText ? '收起 ▲' : '展开 ▼' }}</span>
-                </button>
-                <div v-if="showUnitText" class="max-h-44 overflow-y-auto border-t border-slate-50 px-5 py-3">
-                    <pre class="whitespace-pre-wrap font-sans text-xs leading-relaxed text-slate-600">{{ activeScenario.unit_text }}</pre>
-                </div>
-            </div>
-
-            <div
-                ref="scrollBox"
-                class="flex-1 space-y-3 overflow-y-auto px-5 py-4"
-                style="max-height: 52vh"
-            >
-                <div v-if="state.subtitles.length === 0" class="py-10 text-center text-sm text-slate-400">
-                    对着麦克风说一句话，AI 老师会立刻回答你
-                </div>
-
-                <div
-                    v-for="(subtitle, index) in state.subtitles"
-                    :key="index"
-                    class="flex"
-                    :class="subtitle.speaker === 'student' ? 'justify-end' : 'justify-start'"
-                >
-                    <div
-                        class="max-w-[80%] rounded-2xl px-4 py-2 text-sm leading-relaxed"
-                        :class="subtitle.speaker === 'student'
-                            ? 'rounded-br-sm bg-emerald-100 text-emerald-900'
-                            : 'rounded-bl-sm bg-slate-100 text-slate-800'"
-                    >
-                        <span class="mr-1.5 text-xs opacity-60">
-                            {{ subtitle.speaker === 'student' ? '我' : 'AI 老师' }}
-                        </span>
-                        {{ subtitle.text }}
-                    </div>
-                </div>
-            </div>
-
-            <div class="border-t border-slate-100 px-5 py-4">
-                <div class="flex items-center justify-center gap-8">
-                    <button
-                        class="flex h-24 w-24 items-center justify-center rounded-full border-4 text-4xl shadow-lg transition active:scale-95"
-                        :class="[
-                            isInSession ? 'border-indigo-200 bg-indigo-50' : 'border-emerald-200 bg-emerald-50',
-                            avatarPulse ? 'animate-breathe' : '',
-                        ]"
-                        :title="state.status === 'speaking' || state.status === 'thinking' ? '点击打断' : ''"
-                        @click="onAvatarTap"
-                    >
-                        {{ avatarEmoji }}
-                    </button>
-                </div>
-
-                <p v-if="state.error" class="mt-3 text-center text-sm text-red-600">{{ state.error }}</p>
-
-                <div class="mt-4 flex justify-center gap-3">
-                    <button
+                <div class="mt-4">
+                    <ChatControls
                         v-if="isInSession"
-                        class="rounded-xl bg-rose-500 px-8 py-2.5 text-sm font-medium text-white transition hover:bg-rose-600"
-                        @click="onStop"
+                        :status="state.status"
+                        @interrupt="interrupt"
+                        @stop="onStop"
+                    />
+
+                    <!-- 会话中失败：语音连接断开等 -->
+                    <div
+                        v-else-if="state.status === 'error'"
+                        class="flex flex-col items-center gap-3 rounded-[2rem] bg-white px-6 py-5 shadow-soft"
+                        role="alert"
                     >
-                        结束练习
-                    </button>
-
-                    <template v-else-if="state.status === 'ended'">
-                        <div class="flex items-center gap-4">
-                            <p class="text-sm text-slate-600">
-                                本次练习 {{ fmtDuration(state.durationS) }}，共 {{ state.subtitles.length }} 句话
-                            </p>
-                            <button
-                                class="rounded-xl bg-indigo-500 px-6 py-2.5 text-sm font-medium text-white transition hover:bg-indigo-600"
-                                @click="dismiss"
-                            >
-                                再练一次
-                            </button>
-                        </div>
-                    </template>
-
-                    <template v-else-if="state.status === 'error'">
+                        <p class="text-center text-sm font-bold text-coral-600">
+                            ⚠️ {{ state.error ?? '出错了' }}
+                        </p>
                         <button
-                            class="rounded-xl bg-slate-700 px-6 py-2.5 text-sm font-medium text-white transition hover:bg-slate-800"
-                            @click="dismiss"
+                            type="button"
+                            class="rounded-full bg-ink-700 px-6 py-2.5 text-sm font-extrabold text-white transition hover:bg-ink-600 active:scale-95"
+                            @click="onDismiss"
                         >
                             返回重新开始
                         </button>
-                    </template>
+                    </div>
                 </div>
-            </div>
-        </section>
+            </template>
 
-        <footer class="mt-6 text-center text-xs text-slate-400">
-            录音仅用于内部学习回听 · 请使用 Chrome / Edge / Safari 最新版本
-        </footer>
+            <!-- ═══ 屏 C：结束反馈 ═══ -->
+            <template v-else>
+                <div class="flex flex-1 items-center justify-center py-4">
+                    <SessionEndCard
+                        :scenario="activeScenario"
+                        :duration-s="state.durationS"
+                        :student-turns="studentTurns"
+                        :sentence-count="state.subtitles.length"
+                        :quota="state.quota"
+                        @again="activeScenario ? onStart(activeScenario) : onDismiss()"
+                        @home="onDismiss"
+                    />
+                </div>
+            </template>
+
+            <footer class="mt-6 pb-2 text-center text-xs font-semibold text-ink-300">
+                录音仅用于内部学习回听 · 请使用 Chrome / Edge / Safari 最新版本
+            </footer>
+        </div>
     </div>
 </template>

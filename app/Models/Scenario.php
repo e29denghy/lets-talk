@@ -12,6 +12,8 @@ class Scenario extends Model
     protected $fillable = [
         'name',
         'slug',
+        'emoji',
+        'color',
         'level',
         'description',
         'system_prompt',

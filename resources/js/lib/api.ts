@@ -8,6 +8,8 @@ export interface Scenario {
     id: number;
     name: string;
     slug: string;
+    emoji: string | null;
+    color: 'sun' | 'coral' | 'mint' | 'azure' | 'grape' | null;
     level: number;
     description: string | null;
     target_vocab: string[];
@@ -77,7 +79,11 @@ export const api = {
             body: JSON.stringify(payload),
         }),
 
-    scenarios: () => request<{ scenarios: Scenario[] }>('/api/voice/scenarios'),
+    scenarios: () =>
+        request<{
+            scenarios: Scenario[];
+            quota: { used_seconds: number; limit_seconds: number } | null;
+        }>('/api/voice/scenarios'),
 
     startSession: (scenarioId: number, language: 'en' | 'zh' = 'en') =>
         request<SessionStartResponse>('/api/voice/sessions', {

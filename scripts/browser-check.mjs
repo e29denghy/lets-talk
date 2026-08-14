@@ -20,6 +20,8 @@ const chrome = spawn(CHROME, [
     '--remote-allow-origins=*',
     '--headless=new',
     '--no-first-run',
+    '--disable-gpu',
+    '--no-sandbox',
     '--use-fake-ui-for-media-stream',
     '--use-fake-device-for-media-stream',
     '--autoplay-policy=no-user-gesture-required',
@@ -81,16 +83,16 @@ try {
         await sleep(2500);
     }
 
-    // 点「打招呼」
+    // 点第一个场景卡片（默认 U1 五感魔法秀）
     const clicked = await Runtime.evaluate({
         expression: `(() => {
-            const btn = [...document.querySelectorAll('button')].find(b => b.textContent.includes('打招呼'));
+            const btn = document.querySelector('section[aria-label="场景选择"] button');
             if (btn) { btn.click(); return true; }
             return false;
         })()`,
         returnByValue: true,
     });
-    console.log('[check] 点击打招呼:', clicked.result.value);
+    console.log('[check] 点击场景:', clicked.result.value);
 
     await sleep(9000);
 

@@ -30,6 +30,8 @@ interface VoiceState {
     durationS: number;
     uploadedStudentBytes: number;
     uploadedAiBytes: number;
+    /** 学生麦克风实时电平 0~1（用于音量可视化，与推流逻辑无关） */
+    micLevel: number;
 }
 
 const state = reactive<VoiceState>({
@@ -41,6 +43,7 @@ const state = reactive<VoiceState>({
     durationS: 0,
     uploadedStudentBytes: 0,
     uploadedAiBytes: 0,
+    micLevel: 0,
 });
 
 let recorder: MicRecorder | null = null;
@@ -67,6 +70,25 @@ const VISITOR_COOKIE = 'lets_talk_visitor';
 // AI 说话期间的插话判定阈值：麦克风帧能量超过它才算「学生开口」。
 // 低于该值的帧（包括扬声器回声）在 AI 说话期间不会发给服务端，防止回声自激循环。
 const BARGE_IN_RMS = 0.08;
+
+/* ---- 麦克风电平可视化（rAF 节流 + 快升慢降平滑，~30fps 写状态） ---- */
+let micLevelRaw = 0;
+let micLevelRaf: number | null = null;
+
+function sampleMicLevel(pcm: Int16Array): void {
+    const rms = rmsEnergy(pcm);
+    micLevelRaw = Math.max(micLevelRaw, Math.min(1, rms * 5));
+
+    if (micLevelRaf === null) {
+        micLevelRaf = requestAnimationFrame(() => {
+            micLevelRaf = null;
+            const target = micLevelRaw;
+            micLevelRaw = 0;
+            state.micLevel = state.micLevel > target ? state.micLevel * 0.82 : target;
+            if (state.micLevel < 0.02) state.micLevel = 0;
+        });
+    }
+}
 
 async function ensureVisitor(nickname?: string, grade?: number): Promise<void> {
     if (document.cookie.includes(`${VISITOR_COOKIE}=`)) return;
@@ -96,9 +118,15 @@ async function start(
         state.quota = result.quota;
         sessionStartedAt = Date.now();
 
-        // 用户手势内解锁自动播放（AI 输出是 24kHz PCM）
+        // 用户手势内解锁自动播放（AI 输出是 24kHz PCM）。
+        // 无手势/策略受限时 resume() 可能一直挂起——5 秒后放行，
+        // 避免会话卡死在 connecting；上下文恢复后播放器仍可出声。
         player = new PcmPlayer();
-        await player.unlock(result.credentials.output_sample_rate ?? result.audio.sample_rate);
+        const playerSampleRate = result.credentials.output_sample_rate ?? result.audio.sample_rate;
+        await Promise.race([
+            player.unlock(playerSampleRate),
+            new Promise<void>((resolve) => window.setTimeout(resolve, 5000)),
+        ]);
 
         // 预先组装 session.update，等收到 session.created 后发送
         prepareSessionUpdate(result);
@@ -154,6 +182,8 @@ function prepareSessionUpdate(result: SessionStartResponse): void {
  *  2. 平时：全量推流，话轮由服务端 server_vad 判断。
  */
 function onStudentPcm(pcm: Int16Array): void {
+    sampleMicLevel(pcm);
+
     if (!socket || socket.readyState !== WebSocket.OPEN) return;
 
     uploader?.append('student', pcm);
@@ -439,6 +469,8 @@ function reset(): void {
     state.durationS = 0;
     state.uploadedStudentBytes = 0;
     state.uploadedAiBytes = 0;
+    state.micLevel = 0;
+    micLevelRaw = 0;
     sessionStartedAt = 0;
 }
 
